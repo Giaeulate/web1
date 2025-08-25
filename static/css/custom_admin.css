@@ -1,0 +1,123 @@
+
+#id_geom-div-map {
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+
+.leaflet-container {
+    height: auto !important;
+    max-height: none !important;
+  }
+  
+.leaflet-container-default {
+    width: 100% !important;
+    height: 400px !important;
+    max-width: 100%;
+    max-height: 500px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
+    box-shadow: none !important;
+}
+
+/* responsive adicional */
+@media (max-width: 768px) {
+    .leaflet-container {
+        height: 300px !important;
+    }
+}
+
+/* custom_admin.css */
+#id_current_location-map {
+    width: 100% !important;
+    height: 400px !important; /* Cambia este valor según necesites */
+    max-height: 400px !important;
+    max-width: 100% !important;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid #ddd;
+}
+
+#map {
+    width: 100%;
+    /* height: calc(100vh - 160px); */
+    min-height: 700px;
+    border-radius: 8px;
+    border: 1px solid #ccc;
+    
+    /* display: block; */
+    /* overflow: hidden; */
+  }
+
+/* Responsive: en móvil */
+@media (max-width: 768px) {
+    #map {
+        height: 400px;
+    }
+}
+
+/* 👁️ Opcional: para ajustar paddings si quieres que toque los bordes */
+#map-wrapper {
+    width: 100%;
+    padding-left: 15px;
+    padding-right: 15px;
+    padding: 0;
+    margin: 0;
+  }
+
+
+
+
+.leaflet-fullscreen {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  z-index: 9999;
+  width: 100vw !important;
+  height: 100vh !important;
+  border-radius: 0 !important;
+}
+
+.leaflet-expand-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 10000;
+  background-color: white;
+  padding: 6px 12px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.leaflet-fullscreen {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  z-index: 9999;
+  width: 100vw;
+  height: 100vh;
+}
+
+.leaflet-map-expanded .leaflet-container {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.leaflet-fullscreen {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  z-index: 9999;
+  width: 100vw;
+  height: 100vh;
+}
+
+.leaflet-map-expanded .leaflet-container {
+  width: 100% !important;
+  height: 100% !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  overflow: visible !important;
+}

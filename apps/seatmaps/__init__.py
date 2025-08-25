@@ -1,0 +1,1 @@
+"""Seatmaps app package."""

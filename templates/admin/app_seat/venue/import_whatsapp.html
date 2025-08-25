@@ -1,0 +1,76 @@
+{# templates/admin/app_seat/venue/import_whatsapp.html #}
+{% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block content %}
+<h1>Importar ubicación de WhatsApp / Mapas</h1>
+
+<form method="post" class="form-row">
+  {% csrf_token %}
+  <div style="max-width:800px">
+    {{ form.as_p }}
+    <button type="submit" class="default">Crear Venue</button>
+  </div>
+</form>
+
+<hr>
+<h3>Previsualización</h3>
+<div id="map" style="height: 400px; max-width: 800px;"></div>
+
+<!-- Leaflet CDN (solo para esta vista) -->
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+  crossorigin=""
+/>
+<script
+  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+  crossorigin=""
+></script>
+
+<script>
+(function(){
+  function val(id){ const el = document.getElementById(id); return el ? el.value.trim() : ""; }
+  function num(s){ if(!s) return null; return parseFloat((s+"").replace(",", ".")); }
+
+  var map = L.map('map').setView([-16.5, -68.15], 12);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
+  var marker = L.marker([-16.5, -68.15], {draggable: true}).addTo(map);
+
+  function refresh(){
+    var lat = num(document.getElementById("id_latitude")?.value);
+    var lon = num(document.getElementById("id_longitude")?.value);
+    if(lat != null && lon != null && !isNaN(lat) && !isNaN(lon)){
+      marker.setLatLng([lat, lon]);
+      map.setView([lat, lon], 16);
+    }
+  }
+
+  // mover marcador -> actualiza inputs
+  marker.on("dragend", function(e){
+    var p = marker.getLatLng();
+    var lat = document.getElementById("id_latitude");
+    var lon = document.getElementById("id_longitude");
+    if(lat && lon){
+      lat.value = p.lat.toFixed(6);
+      lon.value = p.lng.toFixed(6);
+    }
+  });
+
+  // cambios en inputs -> refresca mapa
+  ["id_latitude","id_longitude"].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el){ el.addEventListener("input", refresh); }
+  });
+
+  // al cargar, intentar extraer del link si hace falta
+  var linkEl = document.getElementById("id_link");
+  if(linkEl && (!val("id_latitude") || !val("id_longitude")) && val("id_link")){
+    // enviarlo al servidor al enviar el form; aquí solo preview si ya hay lat/lon
+  }
+  refresh();
+})();
+</script>
+{% endblock %}

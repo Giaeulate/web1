@@ -1,0 +1,143 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Iniciar sesión" %} | {{ block.super }}{% endblock %}
+
+{% block extrastyle %}
+{{ block.super }}
+<style>
+  .auth-card { max-width: 480px; margin: 40px auto; background: var(--body-bg);
+               border: 1px solid var(--hairline-color); border-radius: 8px;
+               box-shadow: 0 2px 10px rgba(0,0,0,.05); }
+  .auth-card .header { padding: 16px 20px; border-bottom: 1px solid var(--hairline-color);
+                       background: var(--darkened-bg); border-top-left-radius: 8px; border-top-right-radius: 8px; }
+  .auth-card .content { padding: 20px; }
+  .step-badge { display:inline-block; padding:4px 10px; border-radius:999px; background: var(--primary); color:#fff; font-size:12px; }
+  .field-row { margin-bottom:14px; }
+  .field-row label { display:block; font-weight:600; margin-bottom:6px; }
+  .field-row input { width:100%; padding:8px 10px; border:1px solid var(--border-color); border-radius:6px; background: var(--body-bg); color: var(--body-fg); }
+  .actions { display:flex; gap:8px; align-items:center; margin-top:16px; }
+  .btn { background: var(--primary); color:#fff; border:none; padding:8px 14px; border-radius:6px; cursor:pointer; }
+  .btn-secondary { background: var(--border-color); color: var(--body-fg); }
+  .help { color: var(--body-quiet-color); font-size:12px; margin-top:4px; }
+  .errorlist { color: var(--error-fg); margin:8px 0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="content" class="colM">
+  <div class="auth-card">
+    <div class="header">
+      {% if wizard.steps.current == "auth" %}
+        <h1 class="app-title">{% trans "Iniciar sesión" %}</h1>
+        <span class="step-badge">{% trans "Paso 1 de 2" %}</span>
+      {% elif wizard.steps.current == "token" %}
+        <h1 class="app-title">{% trans "Verificación en dos pasos" %}</h1>
+        <span class="step-badge">{% trans "Paso 2 de 2" %}</span>
+      {% elif wizard.steps.current == "backup" %}
+        <h1 class="app-title">{% trans "Código de respaldo" %}</h1>
+        <span class="step-badge">{% trans "Paso 2 de 2" %}</span>
+      {% else %}
+        <h1 class="app-title">{% trans "Acceso" %}</h1>
+      {% endif %}
+    </div>
+
+    <div class="content">
+      {% if messages %}
+        <ul class="messagelist">
+          {% for message in messages %}
+            <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+
+      <form action="" method="post" novalidate>
+        {% csrf_token %}
+        {{ wizard.management_form }}
+
+        {% if request.GET.next %}
+          <input type="hidden" name="next" value="{{ request.GET.next }}">
+        {% endif %}
+
+        {% if wizard.form.non_field_errors %}
+          <div class="errorlist">{{ wizard.form.non_field_errors }}</div>
+        {% endif %}
+
+        {% for field in wizard.form.visible_fields %}
+          <div class="field-row">
+            <label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} *{% endif %}</label>
+
+            {% if field.name == "token" or field.name == "otp_token" or field.name == "otp" %}
+              <input
+                type="text"
+                id="{{ field.id_for_label }}"
+                name="{{ field.html_name }}"
+                value="{{ field.value|default_if_none:'' }}"
+                inputmode="numeric" pattern="[0-9]*" maxlength="6"
+                autocomplete="one-time-code" dir="ltr"
+                class="vTextField"
+              />
+              {% if wizard.form.attempts_left is not None %}
+                <div class="help">
+                  {% if wizard.form.attempts_left > 0 %}
+                    Te quedan {{ wizard.form.attempts_left }} intento{% if wizard.form.attempts_left != 1 %}s{% endif %} antes del bloqueo de {{ wizard.form.lock_minutes }} m.
+                  {% else %}
+                    Has alcanzado el límite de intentos. Vuelve a intentarlo más tarde.
+                  {% endif %}
+                </div>
+              {% endif %}
+              {# DEBUG opcional: muestra el id del dispositivo y el código que espera el servidor #}
+              {% if wizard.form.debug_device_id %}
+                <div hidden class="help">
+                  Device: {{ wizard.form.debug_device_id }}{% if wizard.form.debug_server_code %}{% endif %}
+                </div>
+              {% endif %}
+            {% else %}
+              {{ field }}
+            {% endif %}
+
+            {% if field.help_text %}
+              <div class="help">{{ field.help_text|safe }}</div>
+            {% endif %}
+            {% for error in field.errors %}
+              <div class="errorlist">{{ error }}</div>
+            {% endfor %}
+          </div>
+        {% endfor %}
+
+        <div class="actions">
+          <button type="submit" class="btn">
+            {% if wizard.steps.current == "auth" %}
+              {% trans "Continuar" %}
+            {% elif wizard.steps.current == "token" %}
+              {% trans "Verificar" %}
+            {% elif wizard.steps.current == "backup" %}
+              {% trans "Validar código" %}
+            {% else %}
+              {% trans "Enviar" %}
+            {% endif %}
+          </button>
+
+          {% if wizard.steps.current == "token" and other_devices %}
+            <button name="wizard_goto_step" value="backup" class="btn btn-secondary" type="submit">
+              {% trans "Usar código de respaldo" %}
+            </button>
+          {% endif %}
+
+          {% if wizard.steps.prev %}
+            <button name="wizard_goto_step" value="{{ wizard.steps.first }}" class="btn btn-secondary" type="submit">
+              {% trans "Volver" %}
+            </button>
+          {% endif %}
+        </div>
+      </form>
+
+      {% if wizard.steps.current == "auth" %}
+        <p class="help" style="margin-top:16px;">
+          {% trans "Después de validar usuario y contraseña se te pedirá el código de tu app de autenticación (TOTP) o un código de respaldo si lo necesitas." %}
+        </p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
