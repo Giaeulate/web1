@@ -3,6 +3,7 @@ from django.contrib import messages
 from django.shortcuts import redirect
 from django.urls import reverse
 from django_otp.plugins.otp_totp.models import TOTPDevice
+from app_security.models import SecurityPolicy
 
 ADMIN_URL_PREFIX = "/admin/"
 EXEMPT_PREFIXES = ("/account/login", "/account/two_factor", "/admin/logout", "/static/", "/media/")
@@ -18,7 +19,7 @@ class Enforce2FAForGroupsMiddleware:
                 return self.get_response(request)
 
             # 🌟 Chequeo dinámico: ¿tiene el permiso?
-            if u.has_perm("security.require_2fa"):
+            if u.has_perm(f"{SecurityPolicy._meta.app_label}.require_2fa"):
                 has_totp = TOTPDevice.objects.filter(user=u, confirmed=True).exists()
                 is_verified = False
                 if hasattr(u, "is_verified"):
