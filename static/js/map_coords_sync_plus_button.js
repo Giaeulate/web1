@@ -47,6 +47,12 @@
     if (!m || !isFinite(lat) || !isFinite(lon)) return false;
 
     if (!marker) {
+      m.eachLayer(function(layer){
+        if (!marker && layer instanceof L.Marker) marker = layer;
+      });
+    }
+
+    if (!marker) {
       marker = L.marker([lat, lon], { draggable: true }).addTo(m);
       marker.on("dragend", function(){
         var p = marker.getLatLng();
@@ -139,5 +145,16 @@
     setTimeout(function(){ m.invalidateSize(); }, 60);
   }
 
-  document.addEventListener("DOMContentLoaded", bindOnce);
+  // document.addEventListener("DOMContentLoaded", bindOnce);
+  document.addEventListener("DOMContentLoaded", function(){
+    bindOnce();
+    function forceSyncWhenReady(){
+      if (typeof window.__DJLP_forceSync === "function") {
+        window.__DJLP_forceSync();
+      } else {
+        setTimeout(forceSyncWhenReady, 50);
+      }
+    }
+    forceSyncWhenReady();
+  });
 })();
