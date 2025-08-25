@@ -29,7 +29,8 @@ class ThrottledLoginView(BaseLoginView):
             else:
                 mapping = OrderedDict()
                 mapping.update(base)
-        mapping["token"] = ThrottledDeviceValidationForm
+        if "token" in mapping:
+            mapping["token"] = ThrottledDeviceValidationForm
         return mapping
 
     def get_device(self, user=None):
