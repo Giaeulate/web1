@@ -54,7 +54,7 @@ class GroupAdmin(DjangoGroupAdmin):
     def save_related(self, request, form, formsets, change):
         """
         El admin ya guardó el Group (tiene pk) y sus M2M.
-        Aquí sincronizamos el permiso 'security.require_2fa' según el checkbox.
+        Aquí sincronizamos el permiso 'app_security.require_2fa' según el checkbox.
         """
         super().save_related(request, form, formsets, change)
         try:
