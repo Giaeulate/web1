@@ -23,7 +23,7 @@
 /* responsive adicional */
 @media (max-width: 768px) {
     .leaflet-container {
-        height: 300px !important;
+        height: 500px !important;
     }
 }
 

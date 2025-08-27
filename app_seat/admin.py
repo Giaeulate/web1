@@ -1,12 +1,18 @@
-from django.contrib import admin, messages
-from leaflet.admin import LeafletGeoAdmin
-from leaflet_point.admin import LeafletPointAdmin
-from import_export.admin import ImportExportModelAdmin
-from web.admin_utils import DynamicListDisplayMixin, ExportSelectedMixin
+from django.contrib import admin
 from django import forms
-from django.urls import path, reverse
-from django.shortcuts import render, redirect
+from django.contrib.gis.geos import Point
+from import_export.admin import ImportExportModelAdmin
+from leaflet_point.admin import LeafletPointAdmin
 from decimal import Decimal, ROUND_HALF_UP
+
+from web.admin_utils import DynamicListDisplayMixin
+
+from django.http import JsonResponse, HttpResponseBadRequest
+from django.views.decorators.http import require_http_methods
+from django.utils.decorators import method_decorator
+from django.shortcuts import get_object_or_404, render
+from django.urls import path, reverse
+
 from .utils import extract_lat_lon_from_link
 from .models import (
     Venue,
@@ -21,13 +27,18 @@ from .models import (
     Booking,
 )
 
+# <<< IMPORTANTE: importa el sincronizador >>>
+from .views import _sync_canvas_to_models
 
-# Inlines para editar jerarquías dentro del administrador
+
+# -------------------------
+# Inlines
+# -------------------------
 class SectionInline(admin.TabularInline):
     model = Section
     extra = 0
-    fields = ("name", "sort_order")
-    ordering = ("sort_order",)
+    fields = ("name",) if not hasattr(Section, "order") else ("name", "order")
+    ordering = ("name",) if not hasattr(Section, "order") else ("order", "name")
 
 
 class RowInline(admin.TabularInline):
@@ -51,70 +62,101 @@ class PriceCategoryInline(admin.TabularInline):
     ordering = ("name",)
 
 
-
+# -------------------------
+# Helpers
+# -------------------------
 def _q6(x):
-    """Cuantiza a 6 decimales como Decimal, compatible con tus DecimalField."""
+    """Cuantiza a 6 decimales como Decimal, compatible con DecimalField."""
     return Decimal(str(x)).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
 
+
+# -------------------------
+# Venue (con lat/lon + geom)
+# -------------------------
 class VenueAdminForm(forms.ModelForm):
     map_url = forms.CharField(
         required=False,
         label="Link de mapa (Google/Apple/OSM)",
-        help_text="Pega un enlace de Google/Apple/OSM; se rellenarán lat/lon automáticamente."
+        help_text="Pega un enlace; se rellenarán lat/lon automáticamente.",
     )
-
-    # 👇 Clave: localize=False + NumberInput con step
     latitude = forms.DecimalField(
-        max_digits=9, decimal_places=6, localize=False,
-        widget=forms.NumberInput(attrs={'step': '0.000001', 'inputmode': 'decimal', 'pattern': r'[0-9\.\-]*'})
+        required=False,
+        max_digits=9,
+        decimal_places=6,
+        localize=False,
+        widget=forms.NumberInput(
+            attrs={"step": "0.000001", "inputmode": "decimal", "pattern": r"[0-9\.\-]*"}
+        ),
     )
     longitude = forms.DecimalField(
-        max_digits=9, decimal_places=6, localize=False,
-        widget=forms.NumberInput(attrs={'step': '0.000001', 'inputmode': 'decimal', 'pattern': r'[0-9\.\-]*'})
+        required=False,
+        max_digits=9,
+        decimal_places=6,
+        localize=False,
+        widget=forms.NumberInput(
+            attrs={"step": "0.000001", "inputmode": "decimal", "pattern": r"[0-9\.\-]*"}
+        ),
     )
 
     class Meta:
         model = Venue
-        fields = ("map_url", "name", "slug", "address", "description", "latitude", "longitude")
+        fields = ("name", "slug", "address", "description")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        inst = getattr(self, "instance", None)
+        if inst and getattr(inst, "geom", None):
+            try:
+                self.fields["latitude"].initial = _q6(inst.geom.y)
+                self.fields["longitude"].initial = _q6(inst.geom.x)
+            except Exception:
+                pass
 
     def clean(self):
         cleaned = super().clean()
-        link = cleaned.get("map_url")
-
-        # Normaliza si el usuario pegó con coma
+        link = self.data.get("map_url") or cleaned.get("map_url")
         for k in ("latitude", "longitude"):
-            v = cleaned.get(k)
-            if v is not None:
-                v = str(v).replace(",", ".")
-                cleaned[k] = _q6(v)
-
-        # Si no hay lat/lon pero sí link, extraer
-        if (cleaned.get("latitude") is None or cleaned.get("longitude") is None) and link:
+            v = self.data.get(k) or cleaned.get(k)
+            if v not in (None, ""):
+                cleaned[k] = _q6(str(v).replace(",", "."))
+        lat = cleaned.get("latitude")
+        lon = cleaned.get("longitude")
+        if (lat in (None, "") or lon in (None, "")) and link:
             pair = extract_lat_lon_from_link(link)
             if not pair:
                 raise forms.ValidationError("No se pudo extraer coordenadas del link.")
             plat, plon = pair
-            cleaned["latitude"]  = _q6(plat)
+            cleaned["latitude"] = _q6(plat)
             cleaned["longitude"] = _q6(plon)
-
         return cleaned
-    
+
+    def save(self, commit=True):
+        obj = super().save(commit=False)
+        lat = self.cleaned_data.get("latitude")
+        lon = self.cleaned_data.get("longitude")
+        if lat not in (None, "") and lon not in (None, ""):
+            obj.geom = Point(float(lon), float(lat), srid=4326)
+        if commit:
+            obj.save()
+        return obj
+
+
 @admin.register(Venue)
-class VenueAdmin(ImportExportModelAdmin, LeafletPointAdmin):
+class VenueAdmin(ImportExportModelAdmin, DynamicListDisplayMixin, LeafletPointAdmin):
     form = VenueAdminForm
-    list_display = ("name", "slug", "address")
     search_fields = ("name", "slug")
     prepopulated_fields = {"slug": ("name",)}
     config_overrides = {"geocoder": True}
 
     fieldsets = (
-        ("Detalles", {
-            "fields": ("name", "slug", "address", "description")
-        }),
-        ("Ubicación", {
-            "fields": ("map_url", ("latitude", "longitude")),  # mapa irá justo DEBAJO con el JS
-            "description": "Pega el link del mapa; se completarán lat/lon. Ajusta si es necesario."
-        }),
+        ("Detalles", {"fields": ("name", "slug", "address", "description")}),
+        (
+            "Ubicación",
+            {
+                "fields": ("map_url", ("latitude", "longitude")),
+                "description": "Pega el link del mapa; se completarán lat/lon. Ajusta si es necesario.",
+            },
+        ),
     )
 
     class Media:
@@ -126,12 +168,15 @@ class VenueAdmin(ImportExportModelAdmin, LeafletPointAdmin):
         )
 
 
+# -------------------------
+# Resto de modelos
+# -------------------------
 @admin.register(Section)
 class SectionAdmin(admin.ModelAdmin):
-    list_display = ("venue", "name", "sort_order")
+    list_display = ("venue", "name") if not hasattr(Section, "order") else ("venue", "name", "order")
     list_filter = ("venue",)
     search_fields = ("name",)
-    ordering = ("venue", "sort_order", "name")
+    ordering = ("venue", "name") if not hasattr(Section, "order") else ("venue", "order", "name")
     inlines = [RowInline]
 
 
@@ -150,14 +195,6 @@ class SeatAdmin(admin.ModelAdmin):
     list_filter = ("row__section__venue", "row__section", "seat_type")
     search_fields = ("number", "row__name")
     ordering = ("row__section__venue", "row__section", "row__order", "number")
-
-
-@admin.register(SeatMap)
-class SeatMapAdmin(admin.ModelAdmin):
-    list_display = ("venue", "name")
-    list_filter = ("venue",)
-    search_fields = ("name",)
-    ordering = ("venue", "name")
 
 
 @admin.register(Event)
@@ -180,13 +217,7 @@ class PriceCategoryAdmin(admin.ModelAdmin):
 
 @admin.register(EventSeat)
 class EventSeatAdmin(admin.ModelAdmin):
-    list_display = (
-        "event",
-        "seat",
-        "status",
-        "price_category",
-        "hold_expires_at",
-    )
+    list_display = ("event", "seat", "status", "price_category", "hold_expires_at")
     list_filter = ("status", "event", "price_category")
     search_fields = (
         "event__name",
@@ -194,8 +225,8 @@ class EventSeatAdmin(admin.ModelAdmin):
         "seat__row__name",
         "seat__number",
     )
-    ordering = ("event", "seat__row__section", "seat__row__order", "seat__number")
-    raw_id_fields = ("seat",)  # Evita cargar todos los asientos en un desplegable
+    ordering = ("event", "seat__row__section__name", "seat__row__name", "seat__number")
+    raw_id_fields = ("seat",)
 
 
 @admin.register(Hold)
@@ -204,7 +235,7 @@ class HoldAdmin(admin.ModelAdmin):
     list_filter = ("event", "expires_at")
     search_fields = ("event__name", "user__username")
     ordering = ("expires_at",)
-    filter_horizontal = ("seats",)  # interfaz mejorada para ManyToMany
+    filter_horizontal = ("seats",)
 
 
 @admin.register(Booking)
@@ -214,3 +245,70 @@ class BookingAdmin(admin.ModelAdmin):
     search_fields = ("event__name", "user__username")
     ordering = ("-created_at",)
     filter_horizontal = ("seats",)
+
+
+# ---------- Designer SeatMap en Admin ----------
+@admin.register(SeatMap)
+class SeatMapAdmin(admin.ModelAdmin):
+    list_display = ("venue", "name")
+    list_filter = ("venue",)
+    search_fields = ("name",)
+    ordering = ("venue", "name")
+    change_form_template = "admin/app_seat/seatmap/change_form.html"
+
+    def get_urls(self):
+        urls = super().get_urls()
+        custom = [
+            path("<uuid:pk>/designer/", self.admin_site.admin_view(self.designer_view), name="seatmap_designer"),
+            path("<uuid:pk>/api/load/", self.admin_site.admin_view(self.api_load), name="seatmap_api_load"),
+            path("<uuid:pk>/api/save/", self.admin_site.admin_view(self.api_save), name="seatmap_api_save"),
+        ]
+        return custom + urls
+
+    def designer_view(self, request, pk):
+        sm = get_object_or_404(SeatMap, pk=pk)
+        return render(
+            request,
+            "admin/seatmap_designer.html",
+            {
+                "title": f"Designer · {sm.venue.name} / {sm.name}",
+                "seatmap": sm,
+                "load_url": reverse("admin:seatmap_api_load", args=[sm.pk]),
+                "save_url": reverse("admin:seatmap_api_save", args=[sm.pk]),
+            },
+        )
+
+    @method_decorator(require_http_methods(["GET"]))
+    def api_load(self, request, pk):
+        sm = get_object_or_404(SeatMap, pk=pk)
+        data = sm.data or {}
+        if "version" not in data:
+            data = {
+                "version": 1,
+                "canvas": {"width": 2000, "height": 1000},
+                "sections": [],
+                "legend": [],
+            }
+        return JsonResponse({"ok": True, "data": data})
+
+    @method_decorator(require_http_methods(["POST"]))
+    def api_save(self, request, pk):
+        import json
+        sm = get_object_or_404(SeatMap, pk=pk)
+        try:
+            payload = json.loads(request.body.decode("utf-8"))
+        except Exception:
+            return HttpResponseBadRequest("JSON inválido")
+
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            return HttpResponseBadRequest("Falta 'data' dict")
+
+        # Guarda el JSON para poder reabrir el diseñador
+        sm.data = data
+        sm.save(update_fields=["data"])
+
+        # <<< SINCRONIZA A TABLAS (incluye BORRADOS) >>>
+        _sync_canvas_to_models(sm.venue, data)
+
+        return JsonResponse({"ok": True})

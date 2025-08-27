@@ -156,43 +156,214 @@ LEAFLET_POINT_CONFIG = {
 
 
 # settings.py
+# GENERIC_API = {
+#     # Si es None → todas las apps; si listas → solo esas apps
+#     "APPS_ALLOWLIST": ["app_seat"],
+
+#     # Modelos a excluir (app_label.ModelName)
+#     "MODELS_EXCLUDE": [
+#         "admin.LogEntry",
+#         "auth.Permission",
+#         "contenttypes.ContentType",
+#         "sessions.Session",
+#         # "auth.User",  # descomenta si no quieres exponerlo
+#     ],
+
+#     # Exclusiones globales de campos (por nombre)
+#     "GLOBAL_EXCLUDE_FIELDS": ["password"],
+
+#     # Ruta al “dependency” de autenticación. Asegúrate de que exista la función
+#     # get_current_user en fastapi_api/auth.py como te mostré.
+#     "AUTH_DEPENDENCY": "web.auth_jwt:get_current_user",
+
+#     # Configuraciones específicas por modelo
+#     "MODEL_OPTIONS": {
+#         # Modelo que quedará protegido con JWT
+#         "app_seat.Venue": {
+#             "include": ["id", "name", "slug", "address", "description", "latitude", "longitude"],
+#             "search_fields": ["name", "slug", "address"],
+#             "default_order": "name",
+
+#             "expand_allowed": ["events", "events.seats", "events.seats.section", "city", "owner", "sections"],
+#             "expand_default": [],
+#             "expand_max_depth": 3,
+#             # "auth_methods": ["GET"],
+#             # "auth": True,  # ← obliga a que estos endpoints requieran token JWT
+#         },
+#         "app_seat.Event": {
+#             "expand_allowed": ["venue", "seats", "seats.section"],
+#         },
+#         "app_seat.Section": {
+#             "expand_allowed": ["venue"],
+#         },
+
+#         # Puedes definir otros modelos y dejar "auth": False o no especificarlo
+#         # si no requieren autenticación.
+#         # "app_seat.Event": {
+#         #     "search_fields": ["title", "venue__name"],
+#         #     "default_order": "-start_date",
+#         #     "auth": False,
+#         # },
+#     },
+# }
+
 GENERIC_API = {
-    # Si es None → todas las apps; si listas → solo esas apps
+    # Solo montar endpoints del app de asientos
     "APPS_ALLOWLIST": ["app_seat"],
 
-    # Modelos a excluir (app_label.ModelName)
+    # Modelos globalmente excluidos
     "MODELS_EXCLUDE": [
         "admin.LogEntry",
         "auth.Permission",
         "contenttypes.ContentType",
         "sessions.Session",
-        # "auth.User",  # descomenta si no quieres exponerlo
     ],
 
-    # Exclusiones globales de campos (por nombre)
+    # Campos a excluir en todos los modelos
     "GLOBAL_EXCLUDE_FIELDS": ["password"],
 
-    # Ruta al “dependency” de autenticación. Asegúrate de que exista la función
-    # get_current_user en fastapi_api/auth.py como te mostré.
+    # Protege endpoints con tu dependencia (opcional)
     "AUTH_DEPENDENCY": "web.auth_jwt:get_current_user",
 
-    # Configuraciones específicas por modelo
+    # Opciones por modelo
     "MODEL_OPTIONS": {
-        # Modelo que quedará protegido con JWT
+        # ============ Recinto ============
         "app_seat.Venue": {
             "include": ["id", "name", "slug", "address", "description", "latitude", "longitude"],
             "search_fields": ["name", "slug", "address"],
             "default_order": "name",
-            "auth_methods": ["GET"],
-            # "auth": True,  # ← obliga a que estos endpoints requieran token JWT
+            # qué expansiones se permiten
+            "expand_allowed": [
+                "sections",
+                "sections.rows",
+                "sections.rows.seats",
+                "seatmaps",
+                "events",
+                "events.price_categories",
+                "events.seats",
+                "events.seats.seat",
+                "events.seats.seat.row",
+                "events.seats.seat.row.section",
+            ],
+            # si quieres traer siempre las sections:
+            # "expand_default": ["sections"],
+            "expand_max_depth": 4,
         },
 
-        # Puedes definir otros modelos y dejar "auth": False o no especificarlo
-        # si no requieren autenticación.
-        # "app_seat.Event": {
-        #     "search_fields": ["title", "venue__name"],
-        #     "default_order": "-start_date",
-        #     "auth": False,
-        # },
+        # ============ Section ============
+        "app_seat.Section": {
+            "include": ["id", "venue", "name", "category", "order"],
+            "search_fields": ["name", "category", "venue__name"],
+            "default_order": "order",
+            "expand_allowed": [
+                "venue",
+                "rows",
+                "rows.seats",
+            ],
+            "expand_max_depth": 3,
+        },
+
+        # ============ Row ============
+        "app_seat.Row": {
+            "include": ["id", "section", "name", "order"],
+            "search_fields": ["name", "section__name", "section__venue__name"],
+            "default_order": "order",
+            "expand_allowed": [
+                "section",
+                "section.venue",
+                "seats",
+            ],
+        },
+
+        # ============ Seat ============
+        "app_seat.Seat": {
+            "include": ["id", "row", "number", "seat_type"],
+            "search_fields": ["number", "row__name", "row__section__name", "row__section__venue__name"],
+            "default_order": "row",
+            "expand_allowed": [
+                "row",
+                "row.section",
+                "row.section.venue",
+            ],
+        },
+
+        # ============ SeatMap ============
+        "app_seat.SeatMap": {
+            "include": ["id", "venue", "name", "data"],
+            "search_fields": ["name", "venue__name"],
+            "default_order": "name",
+            "expand_allowed": ["venue"],
+        },
+
+        # ============ Event ============
+        "app_seat.Event": {
+            "include": ["id", "name", "slug", "venue", "seatmap", "start_datetime", "end_datetime", "description"],
+            "search_fields": ["name", "slug", "venue__name"],
+            "default_order": "-start_datetime",
+            "expand_allowed": [
+                "venue",
+                "seatmap",
+                "price_categories",
+                "seats",
+                "seats.seat",
+                "seats.seat.row",
+                "seats.seat.row.section",
+            ],
+            "expand_max_depth": 4,
+        },
+
+        # ============ PriceCategory ============
+        "app_seat.PriceCategory": {
+            "include": ["id", "event", "name", "price"],
+            "search_fields": ["name", "event__name"],
+            "default_order": "name",
+            "expand_allowed": ["event"],
+        },
+
+        # ============ EventSeat ============
+        "app_seat.EventSeat": {
+            "include": ["id", "event", "seat", "status", "price_category", "hold_expires_at"],
+            "search_fields": ["event__name", "seat__row__section__venue__name", "seat__row__section__name", "seat__row__name", "seat__number"],
+            "default_order": "seat__row__section__name",
+            "expand_allowed": [
+                "event",
+                "seat",
+                "seat.row",
+                "seat.row.section",
+                "price_category",
+            ],
+        },
+
+        # ============ Hold ============
+        "app_seat.Hold": {
+            "include": ["id", "user", "event", "seats", "expires_at"],
+            "search_fields": ["user__username", "event__name"],
+            "default_order": "expires_at",
+            "expand_allowed": [
+                "user",
+                "event",
+                "seats",
+                "seats.seat",
+                "seats.seat.row",
+                "seats.seat.row.section",
+                "seats.price_category",
+            ],
+        },
+
+        # ============ Booking ============
+        "app_seat.Booking": {
+            "include": ["id", "user", "event", "seats", "total_price", "status"],
+            "search_fields": ["user__username", "event__name", "status"],
+            "default_order": "-created_at",
+            "expand_allowed": [
+                "user",
+                "event",
+                "seats",
+                "seats.seat",
+                "seats.seat.row",
+                "seats.seat.row.section",
+                "seats.price_category",
+            ],
+        },
     },
 }

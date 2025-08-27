@@ -21,14 +21,13 @@ class Venue(GeomPointIdAbstract):
 
 class Section(AutoDateTimeIdAbstract):
     """Sección dentro de un recinto (p. ej. platea, anfiteatro, VIP)."""
-
     venue = ForeignKey(Venue, on_delete=CASCADE, related_name="sections")
     name = CharField(max_length=255)
-    sort_order = IntegerField(default=0)
+    category = CharField(max_length=100, blank=True)
 
     class Meta:
         verbose_name_plural = "Sections"
-        ordering = ["venue", "sort_order", "name"]
+        ordering = ["venue", "order", "name"]
 
     def __str__(self) -> str:
         return f"{self.venue.name} – {self.name}"
@@ -39,7 +38,6 @@ class Row(AutoDateTimeIdAbstract):
 
     section = ForeignKey(Section, on_delete=CASCADE, related_name="rows")
     name = CharField(max_length=50)
-    order = IntegerField(default=0)
 
     class Meta:
         verbose_name_plural = "Rows"
