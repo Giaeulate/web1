@@ -74,27 +74,27 @@
 
 <p class="hint">
   <b>Sección</b>: clics para vértices, <b>Enter</b> cierra, <b>Esc</b> cancela.  
-  <b>Editar</b>: doble-click sobre el polígono → arrastra vértices azules; click en puntos blancos para <b>añadir vértices</b>; selecciona un vértice y <b>Supr/Backspace</b> para eliminar. <b>Enter</b> confirma, <b>Esc</b> deshace.  
-  Luego elige la sección en el combo y crea <b>Filas</b> / <b>Asientos</b> dentro.
+  <b>Editar</b> sección: doble-click → arrastra vértices azules; click en puntos blancos para <b>añadir vértices</b>; selecciona un vértice y <b>Supr/Backspace</b> para eliminar. <b>Enter</b> confirma, <b>Esc</b> deshace.  
+  Luego elige la sección en el combo y crea <b>Filas</b>/<b>Asientos</b> dentro.
 </p>
 
 <div class="legend" id="legend"></div>
 <form id="csrf-form">{% csrf_token %}</form>
 
 <script>
-/* ===== Config ===== */
+/* ===== Endpoints / CSRF ===== */
 const LOAD_URL="{{ load_url }}", SAVE_URL="{{ save_url }}";
 const CSRF_TOKEN=document.querySelector('#csrf-form input[name=csrfmiddlewaretoken]').value;
 const Toast=Swal.mixin({toast:true,position:'top-end',showConfirmButton:false,timer:1600,timerProgressBar:true});
 
+/* ===== Estado global ===== */
 let mode="pan", seatRadius=10, gapX=24, gapY=26, rowCount=10, activeColor="#63b46b";
 let legend=[], seatIdCounter=1, clipboard=null;
 
-/* --- estado de dibujo de sección --- */
+/* Dibujo/edición de sección */
 let drawingSection=false, sectionPoints=[];
 let tempPolyline=null, tempPreview=null, tempMarkers=[];
-let sectionEditing=null; // polígono en modo edición
-let editHandles=[], midHandles=[], editBackup=[], selectedHandle=null;
+let sectionEditing=null, editHandles=[], midHandles=[], editBackup=[], selectedHandle=null;
 
 const canvas=new fabric.Canvas('cvs',{selection:true,preserveObjectStacking:true,fireRightClick:false,stopContextMenu:true});
 function resizeCanvas(){ const el=document.getElementById('stage-container'); canvas.setWidth(el.clientWidth); canvas.setHeight(el.clientHeight); canvas.requestRenderAll(); }
@@ -123,16 +123,30 @@ document.getElementById('row-count').oninput=e=>rowCount=+e.target.value||10;
 const colorInput=document.getElementById('tool-color');
 colorInput.oninput=e=>{
   const c=e.target.value, sel=canvas.getActiveObjects().filter(o=>o.kind==='seat');
-  if(sel.length){ sel.forEach(s=>{ s.set({fill:c}); s.category=guessCategoryFromColor(c)||s.category; s.seat_type=guessSeatTypeFromCategory(s.category)||'standard'; }); canvas.requestRenderAll(); pushHistory(); updateInfoPanel(); }
-  else activeColor=c;
+  if(sel.length){
+    sel.forEach(s=>{
+      s.set({fill:c});
+      s.category=guessCategoryFromColor(c)||s.category;
+      s.seat_type=guessSeatTypeFromCategory(s.category)||'standard';
+    });
+    canvas.requestRenderAll(); pushHistory(); updateInfoPanel();
+  }else activeColor=c;
 };
-function updateColorInput(){ const seats=canvas.getActiveObjects().filter(o=>o.kind==='seat'); colorInput.value=seats.length===1?seats[0].fill:activeColor; }
+function updateColorInput(){
+  const seats=canvas.getActiveObjects().filter(o=>o.kind==='seat');
+  colorInput.value=seats.length===1?seats[0].fill:activeColor;
+}
 canvas.on('selection:created',updateColorInput);
 canvas.on('selection:updated',updateColorInput);
 canvas.on('selection:cleared',updateColorInput);
 
 /* ===== Zoom/Pan ===== */
-canvas.on('mouse:wheel',opt=>{ let z=canvas.getZoom(); z*=0.999**opt.e.deltaY; z=Math.max(.2,Math.min(4,z)); canvas.zoomToPoint({x:opt.e.offsetX,y:opt.e.offsetY},z); opt.e.preventDefault(); opt.e.stopPropagation(); });
+canvas.on('mouse:wheel',opt=>{
+  let z=canvas.getZoom();
+  z*=0.999**opt.e.deltaY; z=Math.max(.2,Math.min(4,z));
+  canvas.zoomToPoint({x:opt.e.offsetX,y:opt.e.offsetY},z);
+  opt.e.preventDefault(); opt.e.stopPropagation();
+});
 document.getElementById('btn-zoom-in').onclick=()=>canvas.setZoom(canvas.getZoom()*1.15);
 document.getElementById('btn-zoom-out').onclick=()=>canvas.setZoom(canvas.getZoom()/1.15);
 let isPanning=false;
@@ -153,6 +167,7 @@ canvas.on('mouse:up',()=>{ isPanning=false; canvas.defaultCursor=(mode==='pan'?'
 function guessSeatTypeFromCategory(c){ c=(c||'').toLowerCase(); if(c==='vip')return'vip'; if(c==='accessible')return'accessible'; return'standard'; }
 function guessCategoryFromColor(color){ return (legend||[]).find(x=>(x.color||'').toLowerCase()===String(color).toLowerCase())?.key||null; }
 function guessColorByKey(k){ return (legend||[]).find(x=>x.key===k)?.color||'#63b46b'; }
+
 function pointInsideSectionAbs(pt, poly){
   const m=poly.calcTransformMatrix();
   const pts=poly.points.map(p=>{
@@ -167,7 +182,11 @@ function pointInsideSectionAbs(pt, poly){
   }
   return inside;
 }
-function currentSectionObj(){ const key=document.getElementById('current-section').value||''; if(!key) return null; return canvas.getObjects().find(o=>o.kind==='section'&&o.section_key===key); }
+function currentSectionObj(){
+  const key=document.getElementById('current-section').value||'';
+  if(!key) return null;
+  return canvas.getObjects().find(o=>o.kind==='section'&&o.section_key===key);
+}
 function ensureSectionSelectedFor(p){
   const s=currentSectionObj();
   if(!s){ Toast.fire({icon:'info',title:'Crea/selecciona una sección primero'}); return null; }
@@ -184,20 +203,75 @@ function refreshSectionSelector(){
 
 /* ===== Crear asientos/filas ===== */
 function seatCircle(x,y,sec,opts={}){
-  const c=new fabric.Circle({left:x-seatRadius,top:y-seatRadius,radius:seatRadius,fill:opts.color||activeColor,stroke:'#334155',strokeWidth:.6,originX:'left',originY:'top'});
-  c.set({hasRotatingPoint:false}); c.kind='seat'; c.number=opts.number||''; c.category=opts.category||guessCategoryFromColor(c.fill); c.seat_type=opts.seat_type||guessSeatTypeFromCategory(c.category); c.id=opts.id||('seat-'+seatIdCounter++);
+  const c=new fabric.Circle({
+    left:x-seatRadius, top:y-seatRadius, radius:seatRadius,
+    fill:opts.color||activeColor, stroke:'#334155', strokeWidth:.6,
+    originX:'left', originY:'top', hasRotatingPoint:false
+  });
+  c.kind='seat';
+  c.number=opts.number||'';
+  c.category=opts.category||guessCategoryFromColor(c.fill);
+  c.seat_type=opts.seat_type||guessSeatTypeFromCategory(c.category);
+  c.id=opts.id||('seat-'+seatIdCounter++);
+  c.row_name=opts.row_name||'';     // ► nombre de fila si se creó con “Fila”
+  c.row_index=opts.row_index||null; // ► orden de fila dentro de la sección
   if(sec){ c.section_key=sec.section_key; c.section_name=sec.section_name; }
   c.on('mousedblclick',async()=>{ await editSeatDialog(c); });
   return c;
 }
-function placeSeat(opt){ const p=canvas.getPointer(opt.e); const s=ensureSectionSelectedFor(p); if(!s) return; canvas.add(seatCircle(p.x,p.y,s,{})); pushHistory(); updateInfoPanel(); }
-function placeRow(opt){ const p=canvas.getPointer(opt.e); const s=ensureSectionSelectedFor(p); if(!s) return; for(let i=0;i<rowCount;i++) canvas.add(seatCircle(p.x+i*gapX,p.y,s,{})); pushHistory(); updateInfoPanel(); }
+function nextLetter(n){ // 0->A, 1->B...
+  const A='A'.charCodeAt(0); let s=''; n++; while(n>0){ n--; s=String.fromCharCode(A+(n%26))+s; n=Math.floor(n/26); } return s;
+}
+function nextRowNameForSection(sec){
+  const seats=canvas.getObjects().filter(o=>o.kind==='seat'&&o.section_key===sec.section_key&&o.row_name);
+  const set=new Set(seats.map(s=>s.row_name));
+  let i=0; while(set.has(nextLetter(i))) i++; return nextLetter(i);
+}
+async function placeRow(opt){
+  const p=canvas.getPointer(opt.e); const sec=ensureSectionSelectedFor(p); if(!sec) return;
+
+  const defaultName=nextRowNameForSection(sec);
+  const {value:form}=await Swal.fire({
+    title:'Nueva fila',
+    html:`<div style="text-align:left">
+      <label>Nombre</label><input id="r-name" class="swal2-input" value="${defaultName}">
+      <label># Asientos</label><input id="r-count" class="swal2-input" type="number" value="${rowCount}" min="1" max="200">
+      <label>Separación X</label><input id="r-gapx" class="swal2-input" type="number" value="${gapX}" min="1" max="200">
+      <label>Num. inicial</label><input id="r-start" class="swal2-input" type="number" value="1" min="1" max="9999">
+    </div>`,
+    focusConfirm:false, showCancelButton:true,
+    preConfirm:()=>{
+      const name=document.getElementById('r-name').value.trim();
+      const count=parseInt(document.getElementById('r-count').value||rowCount,10);
+      const gx=parseFloat(document.getElementById('r-gapx').value||gapX);
+      const start=parseInt(document.getElementById('r-start').value||1,10);
+      if(!name) { Swal.showValidationMessage('Nombre requerido'); return false; }
+      if(!count || count<1) { Swal.showValidationMessage('Cantidad inválida'); return false; }
+      return {name,count,gx,start};
+    }
+  });
+  if(!form) return;
+
+  const rowIdx = computeExistingRowCount(sec) + 1; // orden sugerido
+  for(let i=0;i<form.count;i++){
+    const cx=p.x + i*form.gx, cy=p.y;
+    const number=String(form.start+i);
+    const seat=seatCircle(cx,cy,sec,{number, row_name:form.name, row_index:rowIdx});
+    canvas.add(seat);
+  }
+  pushHistory(); updateInfoPanel();
+}
+function computeExistingRowCount(sec){
+  const names=new Set(canvas.getObjects().filter(o=>o.kind==='seat'&&o.section_key===sec.section_key&&o.row_name).map(s=>s.row_name));
+  return names.size;
+}
+function placeSeat(opt){
+  const p=canvas.getPointer(opt.e); const s=ensureSectionSelectedFor(p); if(!s) return;
+  canvas.add(seatCircle(p.x,p.y,s,{})); pushHistory(); updateInfoPanel();
+}
 
 /* ===== Dibujo de SECCIÓN ===== */
-function startSectionDrawing(){
-  drawingSection=true; sectionPoints=[];
-  clearTempDraw();
-}
+function startSectionDrawing(){ drawingSection=true; sectionPoints=[]; clearTempDraw(); }
 function clearTempDraw(){
   if(tempPolyline){ canvas.remove(tempPolyline); tempPolyline=null; }
   if(tempPreview){ canvas.remove(tempPreview); tempPreview=null; }
@@ -271,7 +345,6 @@ window.addEventListener('keydown',e=>{
     if(e.key==='Enter'){ e.preventDefault(); exitSectionEdit(true); }
     if(e.key==='Escape'){ e.preventDefault(); exitSectionEdit(false); }
     if((e.key==='Backspace'||e.key==='Delete') && selectedHandle && selectedHandle._type==='v'){
-      // eliminar vértice seleccionado (mínimo 3)
       const poly=sectionEditing;
       if(poly.points.length>3){
         poly.points.splice(selectedHandle._index,1);
@@ -292,15 +365,11 @@ function localToWorldOn(poly, lx, ly){
   const p=fabric.util.transformPoint(new fabric.Point(lx - poly.pathOffset.x, ly - poly.pathOffset.y), m);
   return { x:p.x, y:p.y };
 }
-
 function enterSectionEdit(poly){
   if(sectionEditing) exitSectionEdit(false);
   sectionEditing=poly;
-  poly.editing=true;
-  poly.selectable=false;
-  poly.noScaleCache=true;
-  poly.objectCaching=false;
-  poly.strokeUniform=true;
+  poly.editing=true; poly.selectable=false;
+  poly.noScaleCache=true; poly.objectCaching=false; poly.strokeUniform=true;
   editBackup=poly.points.map(p=>({x:p.x,y:p.y}));
   refreshEditHandles(poly);
   Toast.fire({icon:'info',title:'Editando vértices (Enter confirma, Esc cancela)'});
@@ -308,23 +377,18 @@ function enterSectionEdit(poly){
 function exitSectionEdit(commit){
   const poly=sectionEditing; if(!poly) return;
   if(!commit){ poly.points=editBackup.map(p=>({x:p.x,y:p.y})); }
-  // limpiar
   editHandles.forEach(h=>canvas.remove(h)); editHandles=[];
   midHandles.forEach(h=>canvas.remove(h)); midHandles=[];
   selectedHandle=null; editBackup=[];
   poly.selectable=true; poly.editing=false;
-  // recalcular bbox para evitar cortes
   poly.dirty=true; poly._setPositionDimensions({}); poly.setCoords();
   sectionEditing=null; pushHistory(); canvas.requestRenderAll();
 }
-
 function refreshEditHandles(poly){
-  // limpia
   editHandles.forEach(h=>canvas.remove(h)); editHandles=[];
   midHandles.forEach(h=>canvas.remove(h)); midHandles=[];
   selectedHandle=null;
 
-  // vértices (azules)
   poly.points.forEach((pt,idx)=>{
     const w=localToWorldOn(poly, pt.x, pt.y);
     const h=new fabric.Circle({
@@ -336,7 +400,6 @@ function refreshEditHandles(poly){
     h.on('moving',()=>{
       const lc=worldToLocalOn(poly, h.left+h.radius, h.top+h.radius);
       poly.points[h._index].x=lc.x; poly.points[h._index].y=lc.y;
-      // recalcular y actualizar todos los handles
       poly.dirty=true; poly._setPositionDimensions({}); poly.setCoords();
       positionHandles(poly);
       canvas.requestRenderAll();
@@ -344,7 +407,6 @@ function refreshEditHandles(poly){
     canvas.add(h); editHandles.push(h);
   });
 
-  // puntos medios (blancos) para insertar
   for(let i=0;i<poly.points.length;i++){
     const j=(i+1)%poly.points.length;
     const a=localToWorldOn(poly, poly.points[i].x, poly.points[i].y);
@@ -354,9 +416,8 @@ function refreshEditHandles(poly){
       left:mx-4, top:my-4, radius:4, fill:'#ffffff', stroke:'#2563eb', strokeWidth:1,
       hasControls:false, hasBorders:false, selectable:true, hoverCursor:'copy'
     });
-    m._type='m'; m._before=i; // insertar entre i y i+1
+    m._type='m'; m._before=i;
     m.on('mousedown',()=>{
-      // insertar nuevo vértice en la mitad
       const loc=worldToLocalOn(poly, mx, my);
       poly.points.splice(m._before+1, 0, {x:loc.x, y:loc.y});
       poly.dirty=true; poly._setPositionDimensions({}); poly.setCoords();
@@ -367,12 +428,10 @@ function refreshEditHandles(poly){
   }
 }
 function positionHandles(poly){
-  // recoloca los vértices
   editHandles.forEach(h=>{
     const pt=poly.points[h._index]; const w=localToWorldOn(poly, pt.x, pt.y);
     h.set({left:w.x-5, top:w.y-5}); h.setCoords();
   });
-  // recoloca los puntos medios
   midHandles.forEach(m=>{
     const i=m._before, j=(i+1)%poly.points.length;
     const a=localToWorldOn(poly, poly.points[i].x, poly.points[i].y);
@@ -399,7 +458,8 @@ document.addEventListener('keydown',e=>{
 function getActiveObjects(){ const a=canvas.getActiveObjects(); return a&&a.length?a:[]; }
 function copySelected(){ const o=getActiveObjects(); if(!o.length) return; clipboard=o.slice(); Toast.fire({icon:'info',title:'Copiado'}); }
 function pasteClipboard(){ if(!clipboard||!clipboard.length) return; const clones=[]; let n=0;
-  clipboard.forEach(orig=>{ orig.clone(cl=>{ cl.kind=orig.kind; cl.number=orig.number; cl.category=orig.category; cl.seat_type=orig.seat_type; cl.section_key=orig.section_key; cl.section_name=orig.section_name; cl.section_order=orig.section_order;
+  clipboard.forEach(orig=>{ orig.clone(cl=>{
+    cl.kind=orig.kind; cl.number=orig.number; cl.category=orig.category; cl.seat_type=orig.seat_type; cl.section_key=orig.section_key; cl.section_name=orig.section_name; cl.section_order=orig.section_order; cl.row_name=orig.row_name; cl.row_index=orig.row_index;
     if(orig.kind==='seat'){ cl.set({fill:orig.fill}); cl.id='seat-'+seatIdCounter++; }
     cl.set({left:(orig.left||0)+12, top:(orig.top||0)+12, evented:true});
     clones.push(cl); n++; if(n===clipboard.length){ clones.forEach(c=>canvas.add(c)); canvas.setActiveObject(clones[0]); pushHistory(); canvas.requestRenderAll(); updateInfoPanel(); refreshSectionSelector(); }
@@ -407,7 +467,7 @@ function pasteClipboard(){ if(!clipboard||!clipboard.length) return; const clone
 }
 function cutSelected(){ const o=getActiveObjects(); if(!o.length) return; copySelected(); o.forEach(x=>canvas.remove(x)); canvas.discardActiveObject(); pushHistory(); canvas.requestRenderAll(); updateInfoPanel(); refreshSectionSelector(); }
 
-/* ===== Leyenda (para asientos; no afecta la categoría de sección) ===== */
+/* ===== Leyenda ===== */
 const legendDiv=document.getElementById('legend');
 function renderLegend(items){
   legendDiv.innerHTML='';
@@ -462,15 +522,18 @@ function updateInfoPanel(){
 
   const ah=document.createElement('h3'); ah.textContent='Asientos'; ah.style.marginTop='12px'; p.appendChild(ah);
   const head=document.createElement('div'); head.className='seat-row'; ['ID','Número','Categoría'].forEach(t=>{ const s=document.createElement('span'); s.style.fontWeight='bold'; s.textContent=t; head.appendChild(s); }); p.appendChild(head);
-  seats.map((s,i)=>({s,i})).sort((A,B)=>{ const a=parseInt(A.s.number), b=parseInt(B.s.number); if(!isNaN(a)&&!isNaN(b)) return a-b; return A.i-B.i; }).forEach(({s})=>{
-    const r=document.createElement('div'); r.className='seat-row';
-    const id=document.createElement('span'); id.textContent=s.id;
-    const ni=document.createElement('input'); ni.type='text'; ni.value=s.number||''; ni.onclick=e=>e.stopPropagation(); ni.onchange=()=>{ s.number=ni.value; pushHistory(); canvas.requestRenderAll(); updateInfoPanel(); };
-    const sel=document.createElement('select'); legend.forEach(c=>{ const o=document.createElement('option'); o.value=c.key; o.textContent=c.label; if(c.key===s.category) o.selected=true; sel.appendChild(o); });
-    sel.onclick=e=>e.stopPropagation(); sel.onchange=()=>{ s.category=sel.value; s.seat_type=guessSeatTypeFromCategory(s.category); s.set({fill:guessColorByKey(s.category)}); pushHistory(); canvas.requestRenderAll(); updateInfoPanel(); };
-    r.appendChild(id); r.appendChild(ni); r.appendChild(sel); r.onclick=()=>{ const z=canvas.getZoom(), c=s.getCenterPoint(); const w=canvas.getWidth(), h=canvas.getHeight(), v=canvas.viewportTransform.slice(); v[4]=w/2-c.x*z; v[5]=h/2-c.y*z; canvas.setViewportTransform(v); canvas.setActiveObject(s); canvas.requestRenderAll(); };
-    p.appendChild(r);
-  });
+  seats.map((s,i)=>({s,i}))
+    .sort((A,B)=>{ const a=parseInt(A.s.number), b=parseInt(B.s.number); if(!isNaN(a)&&!isNaN(b)) return a-b; return A.i-B.i; })
+    .forEach(({s})=>{
+      const r=document.createElement('div'); r.className='seat-row';
+      const id=document.createElement('span'); id.textContent=s.id;
+      const ni=document.createElement('input'); ni.type='text'; ni.value=s.number||''; ni.onclick=e=>e.stopPropagation(); ni.onchange=()=>{ s.number=ni.value; pushHistory(); canvas.requestRenderAll(); updateInfoPanel(); };
+      const sel=document.createElement('select'); legend.forEach(c=>{ const o=document.createElement('option'); o.value=c.key; o.textContent=c.label; if(c.key===s.category) o.selected=true; sel.appendChild(o); });
+      sel.onclick=e=>e.stopPropagation(); sel.onchange=()=>{ s.category=sel.value; s.seat_type=guessSeatTypeFromCategory(s.category); s.set({fill:guessColorByKey(s.category)}); pushHistory(); canvas.requestRenderAll(); updateInfoPanel(); };
+      r.appendChild(id); r.appendChild(ni); r.appendChild(sel);
+      r.onclick=()=>{ const z=canvas.getZoom(), c=s.getCenterPoint(); const w=canvas.getWidth(), h=canvas.getHeight(), v=canvas.viewportTransform.slice(); v[4]=w/2-c.x*z; v[5]=h/2-c.y*z; canvas.setViewportTransform(v); canvas.setActiveObject(s); canvas.requestRenderAll(); };
+      p.appendChild(r);
+    });
 }
 
 /* ===== Fit / historial ===== */
@@ -484,37 +547,202 @@ function fitToContent(pad=40){
   canvas.setViewportTransform(v); canvas.requestRenderAll();
 }
 const history={past:[],future:[],max:90,dirty:false};
-function snapshot(){ return JSON.stringify(canvas.toJSON(['kind','number','category','id','seat_type','section_key','section_name','section_order'])); }
+function snapshot(){ return JSON.stringify(canvas.toJSON(['kind','number','category','id','seat_type','section_key','section_name','section_order','row_name','row_index'])); }
 function pushHistory(){ const s=snapshot(); if(history.past.length && history.past.at(-1)===s) return; history.past.push(s); if(history.past.length>history.max) history.past.shift(); history.future=[]; history.dirty=true; }
-function loadFromJSON(json,cb){ canvas.loadFromJSON(json,()=>{ canvas.getObjects().forEach(o=>{ if(o.kind==='section') o.on('mousedblclick',()=>enterSectionEdit(o)); }); canvas.renderAll(); cb&&cb(); }); }
+function loadFromJSON(json,cb){
+  canvas.loadFromJSON(json,()=>{
+    canvas.getObjects().forEach(o=>{
+      if(o.kind==='section') o.on('mousedblclick',()=>enterSectionEdit(o));
+      if(o.kind==='seat')    o.on('mousedblclick',async()=>{ await editSeatDialog(o); });
+    });
+    canvas.renderAll(); cb&&cb();
+  });
+}
 function undo(){ if(!history.past.length) return; const cur=snapshot(); history.future.push(cur); const prev=history.past.pop(); if(!prev) return; loadFromJSON(prev,()=>{ updateInfoPanel(); refreshSectionSelector(); }); }
 function redo(){ if(!history.future.length) return; const nxt=history.future.pop(); history.past.push(snapshot()); loadFromJSON(nxt,()=>{ updateInfoPanel(); refreshSectionSelector(); }); }
 function primeHistory(){ history.past=[snapshot()]; history.future=[]; history.dirty=false; }
-function serialize(){ return { version:5, engine:'fabric', legend, ui:{gapX, gapY}, fabric:canvas.toJSON(['kind','number','category','id','seat_type','section_key','section_name','section_order']) }; }
+
+/* ===== Serialización a “modelo” para el sync ===== */
+function buildSectionsModel(){
+  const sections = [];
+  const secObjs = canvas.getObjects().filter(o=>o.kind==='section');
+
+  const allSeats = canvas.getObjects().filter(o=>o.kind==='seat');
+  const tolY = Math.max(6, seatRadius*1.5);
+
+  function centerOfSeat(s){ const c=s.getCenterPoint(); return {x:c.x, y:c.y}; }
+
+  function clusterRowsByY(seats){
+    // orden por y, agrupa asientos cercanos por Y
+    const sorted=seats.slice().sort((a,b)=>centerOfSeat(a).y - centerOfSeat(b).y);
+    const groups=[];
+    for(const s of sorted){
+      const cy=centerOfSeat(s).y;
+      let placed=false;
+      for(const g of groups){
+        const avg=g._avgY/g._n;
+        if(Math.abs(cy-avg)<=tolY){
+          g.arr.push(s); g._avgY+=cy; g._n++; placed=true; break;
+        }
+      }
+      if(!placed) groups.push({arr:[s], _avgY:cy, _n:1});
+    }
+    // ordenar asientos dentro de cada grupo por X
+    groups.forEach(g=>g.arr.sort((a,b)=>centerOfSeat(a).x - centerOfSeat(b).x));
+    return groups.map(g=>g.arr);
+  }
+
+  function letterName(idx){ return nextLetter(idx); }
+
+  for(const sec of secObjs){
+    // Polígono de la sección en coordenadas “mundo”
+    const polygon = sec.points.map(pt=>{
+      const w=localToWorldOn(sec, pt.x, pt.y);
+      return {x:w.x, y:w.y};
+    });
+
+    // Asientos de esta sección
+    const seatsInSec = allSeats.filter(s=>s.section_key===sec.section_key);
+
+    // Si ya traen row_name, agrupar por eso; si no, cluster por Y
+    let rowsMap = {};
+    const namedSeats = seatsInSec.filter(s=>s.row_name);
+    if(namedSeats.length){
+      for(const s of seatsInSec){
+        const key = s.row_name || '__cluster__';
+        (rowsMap[key] ||= []).push(s);
+      }
+    }else{
+      const clusters = clusterRowsByY(seatsInSec);
+      clusters.forEach((arr,idx)=>{ rowsMap[letterName(idx)] = arr; });
+    }
+
+    // Construir filas
+    let rows = Object.keys(rowsMap).map(name=>{
+      const arr = rowsMap[name];
+      // orden por X
+      arr.sort((a,b)=>centerOfSeat(a).x - centerOfSeat(b).x);
+      // número de asiento: usa el seteado, o asigna correlativo L→R
+      const seats = arr.map((s,i)=>{
+        const c = centerOfSeat(s);
+        return {
+          number: String((s.number && s.number.trim()) ? s.number : (i+1)),
+          category: s.category||'',
+          seat_type: s.seat_type||'standard',
+          x: c.x, y: c.y
+        };
+      });
+      const cyAvg = seats.reduce((acc,v)=>acc+v.y,0)/Math.max(1,seats.length);
+      return { name, center_y:cyAvg, seats };
+    });
+
+    // ordenar filas por Y
+    rows.sort((a,b)=>a.center_y-b.center_y);
+    rows.forEach((r,i)=>{ r.order = (namedSeats.length && rows.some(x=>x.name)) ? (i+1) : (i+1); });
+
+    sections.push({
+      key: sec.section_key,
+      name: sec.section_name,
+      category: sec.category||'',
+      order: sec.section_order||0,
+      polygon,
+      rows: rows.map(r=>({ name:r.name, order:r.order, seats:r.seats }))
+    });
+  }
+
+  return sections;
+}
+
+function serialize(){
+  return {
+    version: 6,
+    engine: 'fabric',
+    legend,
+    ui: { gapX, gapY, seatRadius },
+    canvas: { width: canvas.getWidth(), height: canvas.getHeight() },
+    fabric: canvas.toJSON(['kind','number','category','id','seat_type','section_key','section_name','section_order','row_name','row_index']),
+    /* ► clave para _sync_canvas_to_models: */
+    sections: buildSectionsModel()
+  };
+}
 
 /* ===== Cargar / Guardar ===== */
 async function loadData(){
   try{
-    const r=await fetch(LOAD_URL,{headers:{'X-Requested-With':'XMLHttpRequest'}}); const j=await r.json();
+    const r=await fetch(LOAD_URL,{headers:{'X-Requested-With':'XMLHttpRequest'}});
+    const j=await r.json();
     if(!j.ok){ Swal.fire({icon:'error',title:'No se pudo cargar',text:j.error||''}); return; }
-    const data=j.data||{}; legend=data.legend||[]; renderLegend(legend);
-    if(data.ui){ if(typeof data.ui.gapX==='number') gapX=data.ui.gapX; if(typeof data.ui.gapY==='number') gapY=data.ui.gapY; }
-    if(data.engine==='fabric' && data.fabric){ loadFromJSON(data.fabric,()=>{ primeHistory(); fitToContent(); updateInfoPanel(); refreshSectionSelector(); }); }
-    else { loadFromJSON({version:'5.3.0',objects:[]},()=>{ primeHistory(); }); }
-  }catch(err){ Swal.fire({icon:'error',title:'Error de red',text:String(err)}); }
+    const data=j.data||{};
+    legend=data.legend||data.Legend||[];
+    renderLegend(legend);
+
+    if(data.ui){
+      if(typeof data.ui.gapX==='number') gapX=data.ui.gapX;
+      if(typeof data.ui.gapY==='number') gapY=data.ui.gapY;
+      if(typeof data.ui.seatRadius==='number') seatRadius=data.ui.seatRadius;
+      document.getElementById('gap-x').value=gapX;
+      document.getElementById('gap-y').value=gapY;
+      document.getElementById('seat-radius').value=seatRadius;
+    }
+
+    if(data.engine==='fabric' && data.fabric){
+      loadFromJSON(data.fabric,()=>{ primeHistory(); fitToContent(); updateInfoPanel(); refreshSectionSelector(); });
+    }else if(Array.isArray(data.sections) && data.sections.length){
+      // reconstruye mínimamente a partir de sections (asientos como círculos)
+      for(const sec of data.sections){
+        // crear polígono
+        const poly=new fabric.Polygon((sec.polygon||[]).map(p=>({x:p.x,y:p.y})),{
+          fill:'rgba(100,100,100,.10)', stroke:'#475569', strokeWidth:3,
+          objectCaching:false, noScaleCache:true, perPixelTargetFind:true, selectable:true
+        });
+        poly.kind='section'; poly.section_name=sec.name; poly.section_key=sec.key||(sec.name.toLowerCase().replace(/\s+/g,'-')+'-'+Math.floor(Math.random()*1000));
+        poly.section_order=sec.order||0; poly.category=sec.category||'';
+        canvas.add(poly); poly.on('mousedblclick',()=>enterSectionEdit(poly));
+
+        // asientos
+        for(const row of (sec.rows||[])){
+          let i=0;
+          for(const s of (row.seats||[])){
+            const c=seatCircle(s.x,s.y,poly,{number:(s.number||String(++i)), row_name:row.name});
+            canvas.add(c);
+          }
+        }
+      }
+      primeHistory(); fitToContent(); updateInfoPanel(); refreshSectionSelector();
+    }else{
+      loadFromJSON({version:'5.3.0',objects:[]},()=>{ primeHistory(); });
+    }
+  }catch(err){
+    Swal.fire({icon:'error',title:'Error de red',text:String(err)});
+  }
 }
+
 async function doSave(){
   const payload={data:serialize()};
   try{
-    const r=await fetch(SAVE_URL,{method:'POST',headers:{'Content-Type':'application/json','X-CSRFToken':CSRF_TOKEN,'X-Requested-With':'XMLHttpRequest'},body:JSON.stringify(payload)});
+    const r=await fetch(SAVE_URL,{
+      method:'POST',
+      headers:{'Content-Type':'application/json','X-CSRFToken':CSRF_TOKEN,'X-Requested-With':'XMLHttpRequest'},
+      body:JSON.stringify(payload)
+    });
     const j=await r.json();
     if(j.ok){ history.dirty=false; Toast.fire({icon:'success',title:'Guardado'}); }
     else Swal.fire({icon:'error',title:'Error al guardar',text:j.error?String(j.error):JSON.stringify(j)});
-  }catch(err){ Swal.fire({icon:'error',title:'Error de red',text:String(err)}); }
+  }catch(err){
+    Swal.fire({icon:'error',title:'Error de red',text:String(err)});
+  }
 }
 window.addEventListener('beforeunload',e=>{ if(history.dirty){ e.preventDefault(); e.returnValue=''; }});
 
-/* init */
+/* ===== Inicialización ===== */
+document.addEventListener('keydown',e=>{
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='c') copySelected();
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='v') pasteClipboard();
+  if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='x') cutSelected();
+});
+
+document.getElementById('current-section').addEventListener('change',()=>{ /* noop: solo selección */ });
+
 setMode('section');
 loadData();
 </script>
