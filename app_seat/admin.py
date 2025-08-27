@@ -289,7 +289,24 @@ class SeatMapAdmin(admin.ModelAdmin):
                 "sections": [],
                 "legend": [],
             }
-        return JsonResponse({"ok": True, "data": data})
+
+        # ► NUEVO: incluir snapshot vivo de secciones en BD
+        from django.forms.models import model_to_dict
+        db_sections_qs = Section.objects.filter(venue=sm.venue).order_by(
+            *(("order",) if hasattr(Section, "order") else tuple()), "name"
+        )
+        db_sections = []
+        for s in db_sections_qs:
+            db_sections.append(
+                {
+                    "id": str(s.pk),
+                    "name": s.name,
+                    "category": getattr(s, "category", "") or "",
+                    "order": getattr(s, "order", None),
+                }
+            )
+
+        return JsonResponse({"ok": True, "data": data, "db_sections": db_sections})
 
     @method_decorator(require_http_methods(["POST"]))
     def api_save(self, request, pk):

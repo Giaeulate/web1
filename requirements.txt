@@ -12,14 +12,19 @@ django-environ==0.12.0
 django-formtools==2.5.1
 django-import-export==4.3.9
 django-leaflet==0.32.0
+django-leaflet-point==0.3.1
 django-otp==1.6.1
 django-phonenumber-field==8.1.0
 django-two-factor-auth==1.17.0
+djangorestframework==3.16.1
+djangorestframework_simplejwt==5.5.1
 dnspython==2.7.0
+ecdsa==0.19.1
 email_validator==2.2.0
 fastapi==0.116.1
 fastapi-cli==0.0.8
 fastapi-cloud-cli==0.1.5
+GDAL @ file:///private/var/folders/sy/f16zz6x50xz3113nwtb9bvq00000gp/T/abs_adzzs337ym/croot/libgdal-core_1749776330956/work/build/swig/python
 h11==0.16.0
 httpcore==1.0.9
 httptools==0.6.4
@@ -29,15 +34,19 @@ Jinja2==3.1.6
 markdown-it-py==4.0.0
 MarkupSafe==3.0.2
 mdurl==0.1.2
+numpy @ file:///private/var/folders/sy/f16zz6x50xz3113nwtb9bvq00000gp/T/abs_3bjtze2puh/croot/numpy_and_numpy_base_1750883809276/work/dist/numpy-2.3.1-cp313-cp313-macosx_10_15_x86_64.whl#sha256=63c953eb85ecec98161415b947210c6bc8c6812890c500debde1ffaebdf72dee
 phonenumbers==8.13.55
 pillow==11.3.0
 psycopg2-binary==2.9.10
+pyasn1==0.6.1
 pydantic==2.11.7
 pydantic_core==2.33.2
 Pygments==2.19.2
+PyJWT==2.10.1
 pypng==0.20220715.0
 python-dotenv==1.1.1
 python-engineio==4.12.2
+python-jose==3.5.0
 python-multipart==0.0.20
 python-socketio==5.13.0
 PyYAML==6.0.2
@@ -45,10 +54,12 @@ qrcode==7.4.2
 rich==14.1.0
 rich-toolkit==0.15.0
 rignore==0.6.4
+rsa==4.9.1
 sentry-sdk==2.35.0
-setuptools==78.1.1
+setuptools==72.1.0
 shellingham==1.5.4
 simple-websocket==1.1.0
+six==1.17.0
 sniffio==1.3.1
 sqlparse==0.5.3
 starlette==0.47.2
@@ -59,6 +70,7 @@ typing_extensions==4.14.1
 tzdata==2025.2
 urllib3==2.5.0
 uvicorn==0.35.0
+uvloop==0.21.0
 watchfiles==1.1.0
 websockets==15.0.1
 wheel==0.45.1
