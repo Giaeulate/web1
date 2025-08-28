@@ -22,8 +22,6 @@ class CustomUser(AbstractUser):
             return None
         return reverse("admin:user_customuser_change", args=[obj.pk])
 
-    # def get_absolute_url(self):
-    #     return reverse('admin:user_customuser_change', args=[self.pk])
     
     class Meta:
         ordering = ('id',)

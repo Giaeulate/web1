@@ -1,0 +1,118 @@
+{% extends "admin/base_site.html" %}
+{% load static i18n %}
+
+{% block title %}{{ title }} | {{ site_title }}{% endblock %}
+
+{# === Ensanches y resets SOLO para esta vista === #}
+{% block extrastyle %}
+<style>
+    /* Quita paddings/márgenes que mete Jazzmin en la zona central */
+    .content-wrapper {
+        padding: 0 !important;
+    }
+
+    .content-header {
+        display: none;
+    }
+
+    /* ocultamos el header con breadcrumbs para ganar alto */
+    .content {
+        padding: 0 !important;
+        /* margin-top: -10px !important; */
+        margin-left: 7px !important;
+        margin-right: 7px !important;
+    }
+
+    .container-fluid {
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+
+    #jazzy-content {
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+
+    /* Evita cards con esquinas/márgenes alrededor */
+    .content .card {
+        border: 0;
+        box-shadow: none;
+        border-radius: 0;
+        margin: 0;
+    }
+
+    /* El contenedor Angular ocupará todo el espacio disponible */
+    #angular-root.angular-root {
+        position: relative;
+        width: 100%;
+        height: var(--designer-height, 100vh);
+        /* se recalcula con JS para ajustar al header fijo */
+        min-height: 420px;
+        overflow: hidden;
+        background: #fff;
+        /* o tu fondo */
+    }
+
+     #angular-root, app-root { display:block; height:100%; min-height:100%; }
+
+    /* Evita scroll horizontal accidental */
+    html,
+    body {
+        overflow-x: hidden;
+    }
+</style>
+{% endblock %}
+
+{% block breadcrumbs %}
+{# Si quieres, puedes mantenerlos: los ocultamos arriba (content-header) para ganar alto #}
+{% endblock %}
+
+{% block content %}
+
+<script>
+    // Config accesible desde Angular
+    window.__DJANGO__ = {
+        apiBase: "/",
+        csrfCookie: "csrftoken",
+        seatmapId: "{{ seatmap.pk }}",
+        changeUrl: "{{ change_url }}",
+    };
+
+    // Ajusta la altura útil descontando el header fijo de Jazzmin
+    // y cualquier barra superior que tengas. Recalcula en resize.
+    (function resizeDesigner() {
+        function compute() {
+            const vh = window.innerHeight || document.documentElement.clientHeight;
+            const header = document.querySelector('.main-header'); // topbar Jazzmin
+            const headerH = header ? header.offsetHeight : 0;
+            // Si tienes footer fijo, réstalo aquí:
+            const footer = document.querySelector('.main-footer');
+            const footerH = footer ? footer.offsetHeight : 0;
+
+            // Altura final para el lienzo
+            const h = Math.max(300, vh - headerH - footerH);
+            document.documentElement.style.setProperty('--designer-height', h + 'px');
+        }
+        compute();
+        window.addEventListener('resize', compute);
+    })();
+</script>
+
+{{ dj_config|json_script:"dj-config" }}
+
+<!-- Contenedor que Angular llenará al 100% -->
+<div id="angular-root" class="angular-root">
+    <app-root></app-root>
+</div>
+
+{% if DEBUG %}
+<script type="module" src="http://localhost:4200/@vite/client"></script>
+<script type="module">
+    import 'http://localhost:4200/main.js';
+</script>
+{% else %}
+<link rel="stylesheet" href="{% static 'admin/angular/seatmap-designer/browser/styles.css' %}">
+<script type="module" src="{% static 'admin/angular/seatmap-designer/browser/main.js' %}"></script>
+{% endif %}
+
+{% endblock %}

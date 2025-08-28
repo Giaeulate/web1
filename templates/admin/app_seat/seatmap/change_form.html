@@ -1,11 +1,14 @@
+{# templates/admin/app_seat/seatmap/change_form.html #}
 {% extends "admin/change_form.html" %}
 {% load i18n admin_urls %}
 
 {% block object-tools-items %}
   {{ block.super }}
-  {% if original.pk %}
+  {% if change and original %}
     <li>
-      <a href="{% url 'admin:seatmap_designer' original.pk %}" class="historylink">🧩 Designer</a>
+      <a class="historylink" href="{% url 'admin:app_seat_seatmap_designer' original.pk %}">
+        🧩 Abrir diseñador
+      </a>
     </li>
   {% endif %}
 {% endblock %}

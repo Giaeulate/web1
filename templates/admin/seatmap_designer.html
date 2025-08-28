@@ -35,7 +35,7 @@
 
   .seatsio-designer #designer-wrapper{
     width:100%;
-    height: var(--designer-height, 70vh);
+    height: var(--designer-height, 70vh);     /* se setea por JS para ocupar la ventana */
     min-height: 420px;
     display:flex; gap:0;
     border:1px solid var(--b); border-radius:10px; overflow:hidden; background:var(--bg);
@@ -116,32 +116,47 @@
 </div>
 
 <script>
-/* ===== Responsive dentro de Jazzmin ===== */
+/* ===== Ajuste RESPONSIVE real dentro de Jazzmin =====
+  Calcula la altura útil en base al top del root y el viewport.
+  Recalcula en resize y cuando cambia el layout (sidebar colapsa/expande). */
 (function(){
   const root=document.getElementById('designer-root');
   const wrap=document.getElementById('designer-wrapper');
+  const stage=document.getElementById('stage-container');
 
   function layout(){
+    // top efectivo del componente (considera barra superior/breadcrumbs de Jazzmin)
     const rect=root.getBoundingClientRect();
+    const top = rect.top + window.scrollY;
     const vh  = window.innerHeight || document.documentElement.clientHeight;
-    const H   = Math.max(420, vh - rect.top - 24);
+    const H   = Math.max(420, vh - rect.top - 24); // 24px de margen inferior de respiro
+
     root.style.setProperty('--designer-height', H+'px');
     wrap.style.height = H+'px';
+
+    // Ajustar canvas al ancho/alto actuales
     if(window.fabricCanvasReady) window.fabricCanvasReady();
   }
+
+  // Observa cambios de tamaño del contenedor (p.ej. sidebar Jazzmin)
   new ResizeObserver(layout).observe(root);
   window.addEventListener('resize', layout);
   window.addEventListener('load', layout);
   document.addEventListener('DOMContentLoaded', layout);
+
+  // Al colapsar/expandir el sidebar de Jazzmin hay transición; escucha transitionend del body
   document.body.addEventListener('transitionend', (e)=>{
     if(e.propertyName==='margin-left' || e.propertyName==='width') layout();
   });
+
+  // expose para canvas
   window.__seatsio_layout = layout;
 })();
 </script>
 
 <script>
-/* ======== LÓGICA DEL DISEÑADOR ======== */
+/* ======== LÓGICA DEL DISEÑADOR (igual que tu versión, con ajuste responsive) ======== */
+/* Endpoints / CSRF */
 const LOAD_URL="{{ load_url }}", SAVE_URL="{{ save_url }}";
 const CSRF_TOKEN=document.querySelector('#csrf-form input[name=csrfmiddlewaretoken]').value;
 const Toast=Swal.mixin({toast:true,position:'top-end',showConfirmButton:false,timer:1600,timerProgressBar:true});
@@ -151,11 +166,10 @@ let mode="pan", seatRadius=10, gapX=24, gapY=26, rowCount=10, activeColor="#63b4
 let legend=[], seatIdCounter=1, clipboard=null;
 let drawingSection=false, sectionPoints=[], tempPolyline=null, tempPreview=null, tempMarkers=[];
 let sectionEditing=null, editHandles=[], midHandles=[], editBackup=[], selectedHandle=null;
-let hoveringObject=false;
 
 const canvas=new fabric.Canvas('cvs',{selection:true,preserveObjectStacking:true,fireRightClick:false,stopContextMenu:true});
 
-/* Redimensiona canvas */
+/* Redimensiona canvas al tamaño actual del contenedor */
 function resizeCanvas(){
   const el=document.getElementById('stage-container');
   canvas.setWidth(el.clientWidth);
@@ -167,21 +181,13 @@ window.addEventListener('resize', resizeCanvas);
 setTimeout(()=>{ if(window.__seatsio_layout) window.__seatsio_layout(); }, 50);
 
 /* ===== Toolbar / modo ===== */
-function refreshCursor(){
-  if(mode==='pan'){ canvas.defaultCursor = 'grab'; return; }
-  if(mode==='row' || mode==='seat'){ canvas.defaultCursor = hoveringObject ? 'move' : 'crosshair'; return; }
-  if(mode==='section'){ canvas.defaultCursor = 'crosshair'; return; }
-  canvas.defaultCursor = 'default';
-}
 function setMode(m){
   document.querySelectorAll('.seatsio-designer .seat-toolbar button').forEach(b=>b.classList.remove('active'));
   const map={pan:'tool-pan',select:'tool-select',seat:'tool-seat',row:'tool-row',section:'tool-section'};
   document.getElementById(map[m]).classList.add('active');
   mode=m; canvas.isDrawingMode=false;
-  // Permitimos seleccionar objetos también en modos de creación (evita doble acción)
-  canvas.selection=(m!=='pan'); 
+  canvas.selection=(m==='select'); canvas.defaultCursor=(m==='pan'?'grab':'crosshair');
   if(m!=='section') cancelSectionDrawing();
-  refreshCursor();
 }
 document.getElementById('tool-pan').onclick=()=>setMode('pan');
 document.getElementById('tool-select').onclick=()=>setMode('select');
@@ -198,7 +204,11 @@ const colorInput=document.getElementById('tool-color');
 colorInput.oninput=e=>{
   const c=e.target.value, sel=canvas.getActiveObjects().filter(o=>o.kind==='seat');
   if(sel.length){
-    sel.forEach(s=>{ s.set({fill:c}); s.category=guessCategoryFromColor(c)||s.category; s.seat_type=guessSeatTypeFromCategory(s.category)||'standard'; });
+    sel.forEach(s=>{
+      s.set({fill:c});
+      s.category=guessCategoryFromColor(c)||s.category;
+      s.seat_type=guessSeatTypeFromCategory(s.category)||'standard';
+    });
     canvas.requestRenderAll(); pushHistory(); updateInfoPanel();
   } else activeColor=c;
 };
@@ -207,31 +217,14 @@ canvas.on('selection:created',updateColorInput);
 canvas.on('selection:updated',updateColorInput);
 canvas.on('selection:cleared',updateColorInput);
 
-/* ===== Zoom/Pan + hover ===== */
+/* ===== Zoom/Pan ===== */
 canvas.on('mouse:wheel',opt=>{ let z=canvas.getZoom(); z*=0.999**opt.e.deltaY; z=Math.max(.2,Math.min(4,z)); canvas.zoomToPoint({x:opt.e.offsetX,y:opt.e.offsetY},z); opt.e.preventDefault(); opt.e.stopPropagation(); });
 document.getElementById('btn-zoom-in').onclick=()=>canvas.setZoom(canvas.getZoom()*1.15);
 document.getElementById('btn-zoom-out').onclick=()=>canvas.setZoom(canvas.getZoom()/1.15);
-
-canvas.on('mouse:over', e => { if(e.target){ hoveringObject=true; refreshCursor(); }});
-canvas.on('mouse:out',  e => { hoveringObject=false; refreshCursor(); });
-
 let isPanning=false;
-canvas.on('mouse:down',opt=>{
-  // Pan solo en modo pan (o barra espaciadora)
-  if(mode==='pan'||opt.e.code==='Space'||opt.e.key===' '){ isPanning=true; canvas.defaultCursor='grabbing'; return; }
-
-  // >>> Antidoble-acción: si clic sobre un objeto y estamos en modo de creación/dibujo, NO crear nada.
-  if(opt.target && (mode==='row' || mode==='seat' || mode==='section')){
-    // dejamos que Fabric seleccione/arrastre/edite el objeto
-    return;
-  }
-
-  if(mode==='seat') placeSeat(opt);
-  if(mode==='row')  placeRow(opt);
-  if(mode==='section') addSectionPoint(opt);
-});
+canvas.on('mouse:down',opt=>{ if(mode==='pan'||opt.e.code==='Space'||opt.e.key===' '){ isPanning=true; canvas.defaultCursor='grabbing'; } if(mode==='seat') placeSeat(opt); if(mode==='row')  placeRow(opt); if(mode==='section') addSectionPoint(opt); });
 canvas.on('mouse:move',opt=>{ if(drawingSection) drawSectionPreview(opt); if(!isPanning) return; const v=canvas.viewportTransform; v[4]+=opt.e.movementX; v[5]+=opt.e.movementY; canvas.requestRenderAll(); });
-canvas.on('mouse:up',()=>{ isPanning=false; refreshCursor(); });
+canvas.on('mouse:up',()=>{ isPanning=false; canvas.defaultCursor=(mode==='pan'?'grab':'default'); });
 
 /* ===== Helpers ===== */
 function guessSeatTypeFromCategory(c){ c=(c||'').toLowerCase(); if(c==='vip')return'vip'; if(c==='accessible')return'accessible'; return'standard'; }
@@ -411,7 +404,7 @@ function positionHandles(poly){
   midHandles.forEach(m=>{ const i=m._before, j=(i+1)%poly.points.length; const a=localToWorldOn(poly, poly.points[i].x, poly.points[i].y); const b=localToWorldOn(poly, poly.points[j].x, poly.points[j].y); const mx=(a.x+b.x)/2, my=(a.y+b.y)/2; m.set({left:mx-4, top:my-4}); m.setCoords(); });
 }
 
-/* Panel/leyenda (resumido) */
+/* Panel */
 function updateInfoPanel(){
   const p=document.getElementById('info-panel'); p.innerHTML='';
   const sh=document.createElement('h3'); sh.textContent='Secciones'; p.appendChild(sh);
@@ -449,7 +442,7 @@ function renderLegend(items){
   legendDiv.appendChild(add);
 }
 
-/* Fit / Historial / Serialización / Reconciliar con BD */
+/* Fit / Historial / Serialización */
 function fitToContent(pad=40){
   const objs=canvas.getObjects().filter(o=>!o._secTemp);
   if(!objs.length){ canvas.setViewportTransform([1,0,0,1,0,0]); canvas.requestRenderAll(); return; }
@@ -500,11 +493,18 @@ function serialize(){
     sections: buildSectionsModel()
   };
 }
+
+/* Reconciliar con BD (incluido antes) */
 function reconcileWithDb(dbSections){
   if(!Array.isArray(dbSections)) return;
   const polys = canvas.getObjects().filter(o=>o.kind==='section'); if(!polys.length) return;
   const byId = Object.fromEntries(dbSections.map(s=>[String(s.id), s]));
-  polys.forEach(p => { if(p.section_db_id && byId[String(p.section_db_id)]) { const s = byId[String(p.section_db_id)]; p.section_name=s.name; p.category=s.category||p.category; if(s.order!=null) p.section_order=s.order; }});
+  polys.forEach(p => {
+    if(p.section_db_id && byId[String(p.section_db_id)]) {
+      const s = byId[String(p.section_db_id)];
+      p.section_name = s.name; p.category = s.category||p.category; if(s.order!=null) p.section_order=s.order;
+    }
+  });
   const noId = polys.filter(p=>!p.section_db_id);
   if(noId.length){
     const sortedPolys = polys.slice().sort((a,b)=>(a.section_order||0)-(b.section_order||0) || norm(a.section_name).localeCompare(norm(b.section_name)));
@@ -520,7 +520,7 @@ function reconcileWithDb(dbSections){
   canvas.requestRenderAll(); refreshSectionSelector(); updateInfoPanel();
 }
 
-/* Portapapeles + atajos */
+/* Copiar/pegar/cortar + atajos */
 function getActiveObjects(){ const a=canvas.getActiveObjects(); return a&&a.length?a:[]; }
 function copySelected(){ const o=getActiveObjects(); if(!o.length) return; clipboard=o.slice(); Toast.fire({icon:'info',title:'Copiado'}); }
 function pasteClipboard(){ if(!clipboard||!clipboard.length) return; const clones=[]; let n=0;
@@ -578,7 +578,7 @@ async function doSave(){
 window.addEventListener('beforeunload',e=>{ if(history.dirty){ e.preventDefault(); e.returnValue=''; }});
 
 /* Init */
-setMode('section');   // puedes cambiar a 'select' si prefieres
+setMode('section');
 loadData();
 </script>
 {% endblock %}

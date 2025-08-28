@@ -1,0 +1,18 @@
+<!-- {% extends "admin/base_site.html" %}
+{% load static %}
+
+{% block extrahead %}
+  {{ block.super }}
+
+  <!-- Import Map para resolver 'konva' u otros “bare specifiers” -->
+  <script type="importmap">
+  {
+    "imports": {
+      "konva": "https://cdn.jsdelivr.net/npm/konva@9.3.0/+esm"
+    }
+  }
+  </script>
+
+  <!-- Carga tu JS como módulo -->
+  <script type="module" src="{% static 'seat_designer/main.js' %}"></script>
+{% endblock %} -->

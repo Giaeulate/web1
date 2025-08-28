@@ -1,0 +1,6 @@
+{
+  "devDependencies": {
+    "konva": "^9.3.22",
+    "ng2-konva": "^9.0.0"
+  }
+}

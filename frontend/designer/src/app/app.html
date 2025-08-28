@@ -1,0 +1,64 @@
+<header class="seat-topbar">
+  <h1>{{ title() }}</h1>
+  <small>{{ userName }}</small>
+</header>
+
+<div class="seat-toolbar">
+  <div class="seat-group">
+    <button [class.active]="tool() === 'select'"  (click)="setTool('select')">Seleccionar</button>
+    <button [class.active]="tool() === 'rect'"    (click)="setTool('rect')">Rectángulo</button>
+    <button [class.active]="tool() === 'ellipse'" (click)="setTool('ellipse')">Elipse</button>
+    <button [class.active]="tool() === 'poly'"    (click)="setTool('poly')">Polígono</button>
+  </div>
+
+  <div class="seat-group seat-sep">
+    <label>Fondo</label>
+    <input type="color" [ngModel]="bgColor()" (ngModelChange)="bgColor.set($event)" />
+  </div>
+
+  <div class="seat-group seat-sep">
+    <button (click)="zoomFit()">Reset Zoom</button>
+    <button (click)="deleteSelected()" [disabled]="!selectedId()">Eliminar</button>
+  </div>
+
+  <div class="seat-group seat-sep" *ngIf="selectedId()">
+    <!-- Botón corregido -->
+    <button (click)="toggleVertexEdit()" [disabled]="!isSelectedPolygon()">
+      {{ editingVertices() ? 'Salir edición de vértices' : 'Editar vértices' }}
+    </button>
+  </div>
+
+  <div class="seat-hint">
+    Pan: botón medio / <kbd>Space</kbd> • Zoom: rueda •
+    Copiar <kbd>Ctrl/Cmd+C</kbd> • Pegar <kbd>Ctrl/Cmd+V</kbd> •
+    Deshacer <kbd>Ctrl/Cmd+Z</kbd> • Rehacer <kbd>Ctrl/Cmd+Shift+Z</kbd>
+  </div>
+</div>
+
+<div class="seat-main">
+  <div id="designer-container" class="seat-designer-container" [ngStyle]="{'background': bgColor()}">
+    <ko-stage #stageRef [config]="stageConfig" class="seat-stage">
+      <ko-layer #drawLayerRef></ko-layer>
+      <ko-layer #uiLayerRef></ko-layer>
+    </ko-stage>
+  </div>
+
+  <aside class="seat-props">
+    <h3>Propiedades</h3>
+    <div *ngIf="selectedId(); else noSel">
+      <label>Título</label>
+      <input type="text" [ngModel]="propTitle()" (ngModelChange)="updatePropTitle($event)" />
+      <div class="msg" *ngIf="propInvalidMsg()">{{ propInvalidMsg() }}</div>
+
+      <label>Descripción</label>
+      <textarea rows="4" [ngModel]="propDesc()" (ngModelChange)="updatePropDesc($event)"></textarea>
+
+      <p class="meta">
+        ID: <code>{{ selectedId() }}</code>
+      </p>
+    </div>
+    <ng-template #noSel>
+      <p class="muted">Selecciona una figura para editar sus propiedades.</p>
+    </ng-template>
+  </aside>
+</div>

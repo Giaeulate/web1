@@ -29,7 +29,8 @@ from .models import (
 
 # <<< IMPORTANTE: importa el sincronizador >>>
 from .views import _sync_canvas_to_models
-
+from django.template.response import TemplateResponse
+from django.conf import settings
 
 # -------------------------
 # Inlines
@@ -247,11 +248,10 @@ class BookingAdmin(admin.ModelAdmin):
     filter_horizontal = ("seats",)
 
 
-# ---------- Designer SeatMap en Admin ----------
 @admin.register(SeatMap)
 class SeatMapAdmin(admin.ModelAdmin):
     list_display = ("venue", "name")
-    list_filter = ("venue",)
+    list_filter  = ("venue",)
     search_fields = ("name",)
     ordering = ("venue", "name")
     change_form_template = "admin/app_seat/seatmap/change_form.html"
@@ -259,73 +259,103 @@ class SeatMapAdmin(admin.ModelAdmin):
     def get_urls(self):
         urls = super().get_urls()
         custom = [
-            path("<uuid:pk>/designer/", self.admin_site.admin_view(self.designer_view), name="seatmap_designer"),
-            path("<uuid:pk>/api/load/", self.admin_site.admin_view(self.api_load), name="seatmap_api_load"),
-            path("<uuid:pk>/api/save/", self.admin_site.admin_view(self.api_save), name="seatmap_api_save"),
+            path(
+                "<uuid:pk>/designer/",
+                self.admin_site.admin_view(self.angular_panel),  # <- correcto
+                name="app_seat_seatmap_designer",
+            ),
         ]
         return custom + urls
 
-    def designer_view(self, request, pk):
-        sm = get_object_or_404(SeatMap, pk=pk)
-        return render(
-            request,
-            "admin/seatmap_designer.html",
-            {
-                "title": f"Designer · {sm.venue.name} / {sm.name}",
-                "seatmap": sm,
-                "load_url": reverse("admin:seatmap_api_load", args=[sm.pk]),
-                "save_url": reverse("admin:seatmap_api_save", args=[sm.pk]),
+    def angular_panel(self, request, pk, *args, **kwargs):
+        seatmap = get_object_or_404(SeatMap, pk=pk)
+        opts = self.model._meta
+
+        # ✅ contexto del admin desde AdminSite (no desde ModelAdmin)
+        ctx = dict(self.admin_site.each_context(request))
+        ctx.update({
+            # "DEBUG": False,
+            "DEBUG": True,
+            "dj_config": {
+                "title": f"Diseñador: {seatmap.name}",
+                "name": "angular desde django v1",
+                "urls": {
+                    "change": reverse(f"admin:{opts.app_label}_{opts.model_name}_change", args=[seatmap.pk]),
+                    "changelist": reverse(f"admin:{opts.app_label}_{opts.model_name}_changelist"),
+                },
             },
-        )
+            "opts": opts,
+            "original": seatmap,
+            "seatmap": seatmap,
+            "has_view_permission": self.has_view_permission(request, seatmap),
+            "has_change_permission": self.has_change_permission(request, seatmap),
+            "has_module_permission": self.has_module_permission(request),
+            "change_url": reverse(f"admin:{opts.app_label}_{opts.model_name}_change", args=[seatmap.pk]),
+            "changelist_url": reverse(f"admin:{opts.app_label}_{opts.model_name}_changelist"),
+        })
+        return TemplateResponse(request, "admin/angular/designer.html", ctx)
 
-    @method_decorator(require_http_methods(["GET"]))
-    def api_load(self, request, pk):
-        sm = get_object_or_404(SeatMap, pk=pk)
-        data = sm.data or {}
-        if "version" not in data:
-            data = {
-                "version": 1,
-                "canvas": {"width": 2000, "height": 1000},
-                "sections": [],
-                "legend": [],
-            }
+    # def designer_view(self, request, pk):
+    #     sm = get_object_or_404(SeatMap, pk=pk)
+    #     return render(
+    #         request,
+    #         "admin/seatmap_designer.html",
+    #         {
+    #             "title": f"Designer · {sm.venue.name} / {sm.name}",
+    #             "seatmap": sm,
+    #             "load_url": reverse("admin:seatmap_api_load", args=[sm.pk]),
+    #             "save_url": reverse("admin:seatmap_api_save", args=[sm.pk]),
+    #         },
+    #     )
 
-        # ► NUEVO: incluir snapshot vivo de secciones en BD
-        from django.forms.models import model_to_dict
-        db_sections_qs = Section.objects.filter(venue=sm.venue).order_by(
-            *(("order",) if hasattr(Section, "order") else tuple()), "name"
-        )
-        db_sections = []
-        for s in db_sections_qs:
-            db_sections.append(
-                {
-                    "id": str(s.pk),
-                    "name": s.name,
-                    "category": getattr(s, "category", "") or "",
-                    "order": getattr(s, "order", None),
-                }
-            )
+    # @method_decorator(require_http_methods(["GET"]))
+    # def api_load(self, request, pk):
+    #     sm = get_object_or_404(SeatMap, pk=pk)
+    #     data = sm.data or {}
+    #     if "version" not in data:
+    #         data = {
+    #             "version": 1,
+    #             "canvas": {"width": 2000, "height": 1000},
+    #             "sections": [],
+    #             "legend": [],
+    #         }
 
-        return JsonResponse({"ok": True, "data": data, "db_sections": db_sections})
+    #     # ► NUEVO: incluir snapshot vivo de secciones en BD
+    #     from django.forms.models import model_to_dict
+    #     db_sections_qs = Section.objects.filter(venue=sm.venue).order_by(
+    #         *(("order",) if hasattr(Section, "order") else tuple()), "name"
+    #     )
+    #     db_sections = []
+    #     for s in db_sections_qs:
+    #         db_sections.append(
+    #             {
+    #                 "id": str(s.pk),
+    #                 "name": s.name,
+    #                 "category": getattr(s, "category", "") or "",
+    #                 "order": getattr(s, "order", None),
+    #             }
+    #         )
 
-    @method_decorator(require_http_methods(["POST"]))
-    def api_save(self, request, pk):
-        import json
-        sm = get_object_or_404(SeatMap, pk=pk)
-        try:
-            payload = json.loads(request.body.decode("utf-8"))
-        except Exception:
-            return HttpResponseBadRequest("JSON inválido")
+    #     return JsonResponse({"ok": True, "data": data, "db_sections": db_sections})
 
-        data = payload.get("data")
-        if not isinstance(data, dict):
-            return HttpResponseBadRequest("Falta 'data' dict")
+    # @method_decorator(require_http_methods(["POST"]))
+    # def api_save(self, request, pk):
+    #     import json
+    #     sm = get_object_or_404(SeatMap, pk=pk)
+    #     try:
+    #         payload = json.loads(request.body.decode("utf-8"))
+    #     except Exception:
+    #         return HttpResponseBadRequest("JSON inválido")
 
-        # Guarda el JSON para poder reabrir el diseñador
-        sm.data = data
-        sm.save(update_fields=["data"])
+    #     data = payload.get("data")
+    #     if not isinstance(data, dict):
+    #         return HttpResponseBadRequest("Falta 'data' dict")
 
-        # <<< SINCRONIZA A TABLAS (incluye BORRADOS) >>>
-        _sync_canvas_to_models(sm.venue, data)
+    #     # Guarda el JSON para poder reabrir el diseñador
+    #     sm.data = data
+    #     sm.save(update_fields=["data"])
 
-        return JsonResponse({"ok": True})
+    #     # <<< SINCRONIZA A TABLAS (incluye BORRADOS) >>>
+    #     _sync_canvas_to_models(sm.venue, data)
+
+    #     return JsonResponse({"ok": True})
