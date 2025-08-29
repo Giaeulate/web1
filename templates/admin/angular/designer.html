@@ -1,118 +1,113 @@
-{% extends "admin/base_site.html" %}
-{% load static i18n %}
+<header class="seat-topbar">
+    <h1>{{ title() }}</h1>
+    <small>{{ userName }}</small>
+</header>
 
-{% block title %}{{ title }} | {{ site_title }}{% endblock %}
+<div class="seat-toolbar">
+    <div class="seat-group">
+        <button [class.active]="tool() === 'select'" (click)="setTool('select')">Seleccionar</button>
+        <button [class.active]="tool() === 'rect'" (click)="setTool('rect')">Rectángulo</button>
+        <button [class.active]="tool() === 'ellipse'" (click)="setTool('ellipse')">Elipse</button>
+        <button [class.active]="tool() === 'poly'" (click)="setTool('poly')">Polígono</button>
+    </div>
 
-{# === Ensanches y resets SOLO para esta vista === #}
-{% block extrastyle %}
-<style>
-    /* Quita paddings/márgenes que mete Jazzmin en la zona central */
-    .content-wrapper {
-        padding: 0 !important;
-    }
+    <div class="seat-group seat-sep">
+        <label>Fondo</label>
+        <input type="color" [ngModel]="bgColor()" (ngModelChange)="bgColor.set($event)" />
+    </div>
 
-    .content-header {
-        display: none;
-    }
+    <div class="seat-group seat-sep">
+        <button (click)="zoomFit()">Reset Zoom</button>
+        <button (click)="deleteSelected()" [disabled]="!selectedId()">Eliminar</button>
+    </div>
 
-    /* ocultamos el header con breadcrumbs para ganar alto */
-    .content {
-        padding: 0 !important;
-        /* margin-top: -10px !important; */
-        margin-left: 7px !important;
-        margin-right: 7px !important;
-    }
-
-    .container-fluid {
-        padding: 0 !important;
-        margin: 0 !important;
-    }
-
-    #jazzy-content {
-        padding: 0 !important;
-        margin: 0 !important;
-    }
-
-    /* Evita cards con esquinas/márgenes alrededor */
-    .content .card {
-        border: 0;
-        box-shadow: none;
-        border-radius: 0;
-        margin: 0;
-    }
-
-    /* El contenedor Angular ocupará todo el espacio disponible */
-    #angular-root.angular-root {
-        position: relative;
-        width: 100%;
-        height: var(--designer-height, 100vh);
-        /* se recalcula con JS para ajustar al header fijo */
-        min-height: 420px;
-        overflow: hidden;
-        background: #fff;
-        /* o tu fondo */
-    }
-
-     #angular-root, app-root { display:block; height:100%; min-height:100%; }
-
-    /* Evita scroll horizontal accidental */
-    html,
-    body {
-        overflow-x: hidden;
-    }
-</style>
-{% endblock %}
-
-{% block breadcrumbs %}
-{# Si quieres, puedes mantenerlos: los ocultamos arriba (content-header) para ganar alto #}
-{% endblock %}
-
-{% block content %}
-
-<script>
-    // Config accesible desde Angular
-    window.__DJANGO__ = {
-        apiBase: "/",
-        csrfCookie: "csrftoken",
-        seatmapId: "{{ seatmap.pk }}",
-        changeUrl: "{{ change_url }}",
-    };
-
-    // Ajusta la altura útil descontando el header fijo de Jazzmin
-    // y cualquier barra superior que tengas. Recalcula en resize.
-    (function resizeDesigner() {
-        function compute() {
-            const vh = window.innerHeight || document.documentElement.clientHeight;
-            const header = document.querySelector('.main-header'); // topbar Jazzmin
-            const headerH = header ? header.offsetHeight : 0;
-            // Si tienes footer fijo, réstalo aquí:
-            const footer = document.querySelector('.main-footer');
-            const footerH = footer ? footer.offsetHeight : 0;
-
-            // Altura final para el lienzo
-            const h = Math.max(300, vh - headerH - footerH);
-            document.documentElement.style.setProperty('--designer-height', h + 'px');
-        }
-        compute();
-        window.addEventListener('resize', compute);
-    })();
-</script>
-
-{{ dj_config|json_script:"dj-config" }}
-
-<!-- Contenedor que Angular llenará al 100% -->
-<div id="angular-root" class="angular-root">
-    <app-root></app-root>
+    <div class="seat-hint">
+        Pan: botón medio / <kbd>Space</kbd> • Zoom: rueda •
+        Copiar <kbd>Ctrl/Cmd+C</kbd> • Pegar <kbd>Ctrl/Cmd+V</kbd> •
+        Deshacer <kbd>Ctrl/Cmd+Z</kbd> • Rehacer <kbd>Ctrl/Cmd+Shift+Z</kbd>
+    </div>
 </div>
 
-{% if DEBUG %}
-<script type="module" src="http://localhost:4200/@vite/client"></script>
-<script type="module">
-    import 'http://localhost:4200/main.js';
-</script>
-{% else %}
-<link rel="stylesheet" href="{% static 'admin/angular/seatmap-designer/browser/styles.css' %}">
-<script type="module" src="{% static 'admin/angular/seatmap-designer/browser/main.js' %}"></script>
-{% endif %}
+<div class="seat-main">
+    <div id="designer-container" class="seat-designer-container" [ngStyle]="{'background': bgColor()}">
+        <ko-stage #stageRef [config]="stageConfig" class="seat-stage">
+            <ko-layer #drawLayerRef></ko-layer>
+            <ko-layer #uiLayerRef></ko-layer>
+        </ko-stage>
+    </div>
 
-{% endblock %}
+    <aside class="seat-props">
+        <h3>Propiedades</h3>
+
+        <!-- SECTOR -->
+        <div *ngIf="isSectorSelected(); else notSector">
+            <label>Título del sector</label>
+            <input type="text" [ngModel]="propTitle()" (ngModelChange)="updatePropTitle($event)" />
+            <div class="msg" *ngIf="propInvalidMsg()">{{ propInvalidMsg() }}</div>
+
+            <label>Descripción</label>
+            <textarea rows="3" [ngModel]="propDesc()" (ngModelChange)="updatePropDesc($event)"></textarea>
+
+            <hr />
+
+            <h4>Filas</h4>
+            <div class="grid2">
+                <label>Nombre</label>
+                <input type="text" [ngModel]="rowName()" (ngModelChange)="rowName.set($event)" placeholder="Fila A" />
+
+                <label>Ticket</label>
+                <input type="text" [ngModel]="rowTicket()" (ngModelChange)="rowTicket.set($event)"
+                    placeholder="General" />
+
+                <label># Asientos</label>
+                <input type="number" min="1" [ngModel]="rowSeats()" (ngModelChange)="rowSeats.set($event)" />
+
+                <label>Radio asiento</label>
+                <input type="number" min="3" [ngModel]="rowSeatRadius()" (ngModelChange)="rowSeatRadius.set($event)" />
+
+                <label>Alto de fila</label>
+                <input type="number" min="12" [ngModel]="rowHeight()" (ngModelChange)="rowHeight.set($event)" />
+
+                <label>Espacio filas</label>
+                <input type="number" min="0" [ngModel]="rowSpacing()" (ngModelChange)="rowSpacing.set($event)" />
+            </div>
+
+            <button class="primary" (click)="addRowToSelectedSector()">+ Agregar fila</button>
+        </div>
+
+        <!-- ROW -->
+        <!-- ROW -->
+        <ng-template #notSector>
+            <div *ngIf="isRowSelected(); else noSel">
+                <label>Nombre de fila</label>
+                <input type="text" [ngModel]="rowName()"
+                    (ngModelChange)="rowName.set($event); applyRowEditsFromPanel()" />
+
+                <div class="grid2">
+                    <label>Ticket</label>
+                    <input type="text" [ngModel]="rowTicket()"
+                        (ngModelChange)="rowTicket.set($event); applyRowEditsFromPanel()" />
+
+                    <label># Asientos</label>
+                    <input type="number" min="1" [ngModel]="rowSeats()"
+                        (ngModelChange)="rowSeats.set($event); applyRowEditsFromPanel()" />
+
+                    <label>Radio asiento</label>
+                    <input type="number" min="3" [ngModel]="rowSeatRadius()"
+                        (ngModelChange)="rowSeatRadius.set($event); applyRowEditsFromPanel()" />
+
+                    <label>Alto de fila</label>
+                    <input type="number" min="12" [ngModel]="rowHeight()"
+                        (ngModelChange)="rowHeight.set($event); applyRowEditsFromPanel()" />
+                </div>
+
+                <p class="muted">Puedes mover esta fila arrastrándola dentro del sector. Los cambios se aplican en vivo.
+                </p>
+            </div>
+
+            <ng-template #noSel>
+                <p class="muted">Selecciona un sector para agregar filas, o una fila para ver sus propiedades.</p>
+            </ng-template>
+        </ng-template>
+    </aside>
+</div>

@@ -35,11 +35,14 @@ from django.conf import settings
 # -------------------------
 # Inlines
 # -------------------------
+
+
 class SectionInline(admin.TabularInline):
     model = Section
     extra = 0
     fields = ("name",) if not hasattr(Section, "order") else ("name", "order")
-    ordering = ("name",) if not hasattr(Section, "order") else ("order", "name")
+    ordering = ("name",) if not hasattr(
+        Section, "order") else ("order", "name")
 
 
 class RowInline(admin.TabularInline):
@@ -86,7 +89,8 @@ class VenueAdminForm(forms.ModelForm):
         decimal_places=6,
         localize=False,
         widget=forms.NumberInput(
-            attrs={"step": "0.000001", "inputmode": "decimal", "pattern": r"[0-9\.\-]*"}
+            attrs={"step": "0.000001", "inputmode": "decimal",
+                   "pattern": r"[0-9\.\-]*"}
         ),
     )
     longitude = forms.DecimalField(
@@ -95,7 +99,8 @@ class VenueAdminForm(forms.ModelForm):
         decimal_places=6,
         localize=False,
         widget=forms.NumberInput(
-            attrs={"step": "0.000001", "inputmode": "decimal", "pattern": r"[0-9\.\-]*"}
+            attrs={"step": "0.000001", "inputmode": "decimal",
+                   "pattern": r"[0-9\.\-]*"}
         ),
     )
 
@@ -125,7 +130,8 @@ class VenueAdminForm(forms.ModelForm):
         if (lat in (None, "") or lon in (None, "")) and link:
             pair = extract_lat_lon_from_link(link)
             if not pair:
-                raise forms.ValidationError("No se pudo extraer coordenadas del link.")
+                raise forms.ValidationError(
+                    "No se pudo extraer coordenadas del link.")
             plat, plon = pair
             cleaned["latitude"] = _q6(plat)
             cleaned["longitude"] = _q6(plon)
@@ -174,10 +180,12 @@ class VenueAdmin(ImportExportModelAdmin, DynamicListDisplayMixin, LeafletPointAd
 # -------------------------
 @admin.register(Section)
 class SectionAdmin(admin.ModelAdmin):
-    list_display = ("venue", "name") if not hasattr(Section, "order") else ("venue", "name", "order")
+    list_display = ("venue", "name") if not hasattr(
+        Section, "order") else ("venue", "name", "order")
     list_filter = ("venue",)
     search_fields = ("name",)
-    ordering = ("venue", "name") if not hasattr(Section, "order") else ("venue", "order", "name")
+    ordering = ("venue", "name") if not hasattr(
+        Section, "order") else ("venue", "order", "name")
     inlines = [RowInline]
 
 
@@ -218,7 +226,8 @@ class PriceCategoryAdmin(admin.ModelAdmin):
 
 @admin.register(EventSeat)
 class EventSeatAdmin(admin.ModelAdmin):
-    list_display = ("event", "seat", "status", "price_category", "hold_expires_at")
+    list_display = ("event", "seat", "status",
+                    "price_category", "hold_expires_at")
     list_filter = ("status", "event", "price_category")
     search_fields = (
         "event__name",
@@ -226,7 +235,8 @@ class EventSeatAdmin(admin.ModelAdmin):
         "seat__row__name",
         "seat__number",
     )
-    ordering = ("event", "seat__row__section__name", "seat__row__name", "seat__number")
+    ordering = ("event", "seat__row__section__name",
+                "seat__row__name", "seat__number")
     raw_id_fields = ("seat",)
 
 
@@ -251,7 +261,7 @@ class BookingAdmin(admin.ModelAdmin):
 @admin.register(SeatMap)
 class SeatMapAdmin(admin.ModelAdmin):
     list_display = ("venue", "name")
-    list_filter  = ("venue",)
+    list_filter = ("venue",)
     search_fields = ("name",)
     ordering = ("venue", "name")
     change_form_template = "admin/app_seat/seatmap/change_form.html"
@@ -284,6 +294,7 @@ class SeatMapAdmin(admin.ModelAdmin):
                     "changelist": reverse(f"admin:{opts.app_label}_{opts.model_name}_changelist"),
                 },
             },
+            "title": f"Diseñador: {seatmap.name}",
             "opts": opts,
             "original": seatmap,
             "seatmap": seatmap,

@@ -1,6 +1,5 @@
 <header class="seat-topbar">
-  <h1>{{ title() }}</h1>
-  <small>{{ userName }}</small>
+  
 </header>
 
 <div class="seat-toolbar">
@@ -21,13 +20,6 @@
     <button (click)="deleteSelected()" [disabled]="!selectedId()">Eliminar</button>
   </div>
 
-  <div class="seat-group seat-sep" *ngIf="selectedId()">
-    <!-- Botón corregido -->
-    <button (click)="toggleVertexEdit()" [disabled]="!isSelectedPolygon()">
-      {{ editingVertices() ? 'Salir edición de vértices' : 'Editar vértices' }}
-    </button>
-  </div>
-
   <div class="seat-hint">
     Pan: botón medio / <kbd>Space</kbd> • Zoom: rueda •
     Copiar <kbd>Ctrl/Cmd+C</kbd> • Pegar <kbd>Ctrl/Cmd+V</kbd> •
@@ -45,20 +37,81 @@
 
   <aside class="seat-props">
     <h3>Propiedades</h3>
-    <div *ngIf="selectedId(); else noSel">
-      <label>Título</label>
+
+    <!-- SECTOR -->
+    <div *ngIf="isSectorSelected(); else notSector">
+      <label>Título del sector</label>
       <input type="text" [ngModel]="propTitle()" (ngModelChange)="updatePropTitle($event)" />
       <div class="msg" *ngIf="propInvalidMsg()">{{ propInvalidMsg() }}</div>
 
       <label>Descripción</label>
-      <textarea rows="4" [ngModel]="propDesc()" (ngModelChange)="updatePropDesc($event)"></textarea>
+      <textarea rows="3" [ngModel]="propDesc()" (ngModelChange)="updatePropDesc($event)"></textarea>
 
-      <p class="meta">
-        ID: <code>{{ selectedId() }}</code>
+      <hr />
+
+      <h4>Filas</h4>
+      <div class="grid2">
+        <label>Nombre</label>
+        <input type="text" [ngModel]="rowName()" (ngModelChange)="rowName.set($event)" placeholder="Fila A" />
+
+        <label>Ticket</label>
+        <input type="text" [ngModel]="rowTicket()" (ngModelChange)="rowTicket.set($event)" placeholder="General" />
+
+        <label># Asientos</label>
+        <input type="number" min="1" [ngModel]="rowSeats()" (ngModelChange)="rowSeats.set($event)" />
+
+        <label>Radio asiento</label>
+        <input type="number" min="3" [ngModel]="rowSeatRadius()" (ngModelChange)="rowSeatRadius.set($event)" />
+
+        <label>Alto de fila</label>
+        <input type="number" min="12" [ngModel]="rowHeight()" (ngModelChange)="rowHeight.set($event)" />
+
+        <label>Espacio filas</label>
+        <input type="number" min="0" [ngModel]="rowSpacing()" (ngModelChange)="rowSpacing.set($event)" />
+      </div>
+
+      <div class="muted" style="margin:.5rem 0 .25rem">
+        <button class="secondary" (click)="toggleRowPreview()">
+          {{ rowPreviewEnabled() ? 'Ocultar preview' : 'Mostrar preview' }}
+        </button>
+      </div>
+
+      <button class="primary" (click)="addRowToSelectedSector()">+ Agregar fila (usa el preview)</button>
+
+      <p class="help">
+        El preview sólo aparece si lo activas. Las filas no se modifican al redimensionar el sector; sólo se
+        ajusta el ancho de su banda y el área de clic.
       </p>
+
+      <div class="msg warn" *ngIf="sideMsg()">{{ sideMsg() }}</div>
     </div>
-    <ng-template #noSel>
-      <p class="muted">Selecciona una figura para editar sus propiedades.</p>
+
+    <!-- ROW -->
+    <ng-template #notSector>
+      <div *ngIf="isRowSelected(); else noSel">
+        <label>Nombre de fila</label>
+        <input type="text" [ngModel]="propTitle()" (ngModelChange)="updatePropTitle($event)" />
+
+        <div class="grid2">
+          <label>Ticket</label>
+          <input type="text" [ngModel]="rowTicket()" (ngModelChange)="rowTicket.set($event)" />
+
+          <label># Asientos</label>
+          <input type="number" min="1" [ngModel]="rowSeats()" (ngModelChange)="rowSeats.set($event)" />
+
+          <label>Radio asiento</label>
+          <input type="number" min="3" [ngModel]="rowSeatRadius()" (ngModelChange)="rowSeatRadius.set($event)" />
+
+          <label>Alto de fila</label>
+          <input type="number" min="12" [ngModel]="rowHeight()" (ngModelChange)="rowHeight.set($event)" />
+        </div>
+
+        <button class="secondary" (click)="applyRowEditsFromPanel()">Aplicar cambios</button>
+      </div>
+
+      <ng-template #noSel>
+        <p class="muted">Selecciona un sector para agregar filas, o una fila para ver sus propiedades.</p>
+      </ng-template>
     </ng-template>
   </aside>
 </div>
