@@ -55,7 +55,7 @@ class GeomPointAbstract(AutoDateTimeAbstract):
 
 
 class GeomPointIdAbstract(AutoDateTimeIdAbstract):
-    # geom = PointField(blank=True, null=True, srid=4326, verbose_name='Ubicación')
+    geom = PointField(blank=True, null=True, srid=4326, verbose_name='Ubicación')
     latitude = DecimalField(max_digits=9, decimal_places=6, null=True)
     longitude = DecimalField(max_digits=9, decimal_places=6, null=True)
 

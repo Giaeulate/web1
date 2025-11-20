@@ -103,20 +103,24 @@ class VenueAdminForm(forms.ModelForm):
                    "pattern": r"[0-9\.\-]*"}
         ),
     )
-
     class Meta:
         model = Venue
-        fields = ("name", "slug", "address", "description")
+        # Include lat/lon and geom so their widgets/Media are registered
+        fields = ("name", "slug", "address", "description", "latitude", "longitude", "geom")
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        inst = getattr(self, "instance", None)
-        if inst and getattr(inst, "geom", None):
-            try:
-                self.fields["latitude"].initial = _q6(inst.geom.y)
-                self.fields["longitude"].initial = _q6(inst.geom.x)
-            except Exception:
-                pass
+    def get_form(self, request, obj=None, **kwargs):
+        form = super().get_form(request, obj, **kwargs)
+        # Ensure the geom field uses the correct widget
+        if 'geom' in form.fields:
+            from leaflet_point.forms.widgets import PointWidget
+            widget = PointWidget()
+            widget.attrs.update({
+                'style': 'width: 100%; height: 400px; min-height: 400px;',
+                'class': 'leaflet-point-map',
+                'data-geocoder': 'true'
+            })
+            form.fields['geom'].widget = widget
+        return form
 
     def clean(self):
         cleaned = super().clean()
@@ -142,41 +146,42 @@ class VenueAdminForm(forms.ModelForm):
         lat = self.cleaned_data.get("latitude")
         lon = self.cleaned_data.get("longitude")
         if lat not in (None, "") and lon not in (None, ""):
+            # Persist WGS84 point and denormalize numeric fields for convenience
             obj.geom = Point(float(lon), float(lat), srid=4326)
+            obj.latitude = lat
+            obj.longitude = lon
         if commit:
             obj.save()
         return obj
 
 
 @admin.register(Venue)
-class VenueAdmin(ImportExportModelAdmin, DynamicListDisplayMixin, LeafletPointAdmin):
+class VenueAdmin(LeafletPointAdmin):
     form = VenueAdminForm
     search_fields = ("name", "slug")
     prepopulated_fields = {"slug": ("name",)}
     config_overrides = {"geocoder": True}
-
     fieldsets = (
-        ("Detalles", {"fields": ("name", "slug", "address", "description")}),
-        (
-            "Ubicación",
-            {
-                "fields": ("map_url", ("latitude", "longitude")),
-                "description": "Pega el link del mapa; se completarán lat/lon. Ajusta si es necesario.",
-            },
-        ),
+        (None, {
+            "fields": ("name", "slug", "address", "description"),
+        }),
+        ("Ubicación", {
+            "fields": ("map_url", "latitude", "longitude", "geom"),
+            "description": "Usa el mapa o pega un enlace de Google/Apple/OSM para rellenar las coordenadas.",
+        }),
     )
-
     class Media:
         js = (
-            *LeafletPointAdmin.Media.js,
-            "js/force_dot_decimal.js",
-            "js/map_url_autofill.js",
-            "js/map_coords_sync_plus_button.js",
+            "admin/js/vendor/jquery/jquery.min.js",
+            "leaflet/leaflet.js",
+            "leaflet_point/Control.Geocoder.js",
+            "leaflet_point/leaflet_point.js",
+            # Solo sincroniza inputs con el mapa del widget; no crea mapas nuevos
+            "js/leaflet_point_center_on_change.js",
         )
-
-
-# -------------------------
-# Resto de modelos
+        css = {
+            "all": ("leaflet/leaflet.css", "leaflet_point/leaflet.css", "css/custom_admin.css"),
+        }
 # -------------------------
 @admin.register(Section)
 class SectionAdmin(admin.ModelAdmin):
@@ -330,14 +335,6 @@ class SeatMapAdmin(admin.ModelAdmin):
     #             "sections": [],
     #             "legend": [],
     #         }
-
-    #     # ► NUEVO: incluir snapshot vivo de secciones en BD
-    #     from django.forms.models import model_to_dict
-    #     db_sections_qs = Section.objects.filter(venue=sm.venue).order_by(
-    #         *(("order",) if hasattr(Section, "order") else tuple()), "name"
-    #     )
-    #     db_sections = []
-    #     for s in db_sections_qs:
     #         db_sections.append(
     #             {
     #                 "id": str(s.pk),
@@ -346,8 +343,6 @@ class SeatMapAdmin(admin.ModelAdmin):
     #                 "order": getattr(s, "order", None),
     #             }
     #         )
-
-    #     return JsonResponse({"ok": True, "data": data, "db_sections": db_sections})
 
     # @method_decorator(require_http_methods(["POST"]))
     # def api_save(self, request, pk):

@@ -109,7 +109,13 @@ USE_TZ = True
 
 
 STATIC_URL = '/static/'
-STATIC_ROOT = os.path.join(BASE_DIR, 'static')
+# During development, Django's staticfiles finders do NOT look into STATIC_ROOT.
+# Point STATICFILES_DIRS to the source 'static' folder, and keep STATIC_ROOT
+# as a separate target for collectstatic in production.
+STATICFILES_DIRS = [
+    BASE_DIR / 'static',
+]
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 MEDIA_DIR = BASE_DIR / 'media'
 MEDIA_ROOT = MEDIA_DIR
@@ -150,11 +156,18 @@ LEAFLET_POINT_CONFIG = {
     # these are defaults...
     'map_height': 400,
     'tile_layer': 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    'attibution': '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    'attribution': '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
     'initial_lat': -16,
     'initial_lng': -68,
     'initial_zoom': 15,
-    'geocoder': True
+    'geocoder': True,
+    'widget': {
+        'map': {
+            'center': [-16, -68],
+            'zoom': 15,
+            'scrollWheelZoom': True,
+        }
+    }
 }
 
 

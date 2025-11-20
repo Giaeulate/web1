@@ -87,11 +87,29 @@ def get_application() -> FastAPI:
     mimetypes.add_type("application/javascript", ".js")
     mimetypes.add_type("text/css", ".css")
     
-    app.mount(
-        django_settings.STATIC_URL,
-        StaticFiles(directory=str(django_settings.STATIC_ROOT)),
-        name="static_files_collected"
-    )
+    # Mount static files conditionally to avoid RuntimeError when directory doesn't exist
+    static_dir = None
+    try:
+        # Prefer collected static files if available
+        if getattr(django_settings, "STATIC_ROOT", None):
+            root_path = str(django_settings.STATIC_ROOT)
+            if root_path and os.path.isdir(root_path):
+                static_dir = root_path
+        # Fallback to sources in development
+        if not static_dir and getattr(django_settings, "STATICFILES_DIRS", None):
+            for p in django_settings.STATICFILES_DIRS:
+                if p and os.path.isdir(p):
+                    static_dir = str(p)
+                    break
+    except Exception:
+        static_dir = None
+
+    if static_dir:
+        app.mount(
+            django_settings.STATIC_URL,
+            StaticFiles(directory=static_dir),
+            name="static"
+        )
 
     # 🧬 Django embebido
     app.mount("/", WSGIMiddleware(get_wsgi_application()))

@@ -12,6 +12,10 @@ frontend
 frontend/
 frontend/*
 
+static
+static/
+static/*
+
 # Distribution / packaging
 .Python
 build/

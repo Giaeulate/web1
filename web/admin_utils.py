@@ -20,8 +20,6 @@ class DynamicListDisplayMixin:
 
     class Media:
         js = (
-            # "js/admin_leaflet_tilelayer.js",
-            # "js/show_waypoints.js",
             "js/admin_leaflet_expand.js",
         )
         css = {
